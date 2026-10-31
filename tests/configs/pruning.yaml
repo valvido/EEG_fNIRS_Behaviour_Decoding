@@ -1,0 +1,32 @@
+# Test fixture, a copy of the default values. No test runs pruning from it; the
+# experiment only needs a valid file to load.
+random_state: 42
+window_sec: 25.0
+
+eeg:
+  line_freqs: [50, 100]
+  ransac: true
+  pass1:
+    flat_threshold: 1.0e-15
+    deviation_threshold: 5.0
+    hf_noise_threshold: 5.0
+  pass2:
+    correlation_secs: 1.0
+    correlation_threshold: 0.4
+    correlation_frac_bad: 0.1
+    ransac_n_samples: 50
+    ransac_sample_prop: 0.25
+    ransac_corr_thresh: 0.75
+    ransac_frac_bad: 0.4
+    ransac_window_secs: 5.0
+
+fnirs:
+  highpass_hz: 0.01
+  butter_order: 4
+  sd_range_mm: [10, 45]
+  amp_range_v: [1.0e-3, 0.85]
+  snr_threshold: 3.0
+  sci_threshold: 0.5
+  psp_threshold: 0.05
+  window_length_s: 5.0
+  time_pass_fraction: 0.5

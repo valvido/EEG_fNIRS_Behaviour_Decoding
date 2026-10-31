@@ -1,0 +1,68 @@
+#data files
+data/
+
+#python cache
+__pycache__/
+.pytest_cache/
+*.pyc
+
+#debugging notebooks
+notebooks/debugging/
+
+#all results (plots, cv runs)
+/results/
+
+#preprocessed-trial cache
+cache/
+
+#macOS junk
+.DS_Store
+
+#pysnirf log
+pysnirf2.log
+
+
+#Custom rules and skills for Claude
+CLAUDE.md
+.claude/
+
+#jupyter checkpoints
+.ipynb_checkpoints/
+
+#editor/IDE settings
+.vscode/
+.idea/
+
+#logs
+*.log
+
+#python build/venv artifacts
+*.egg-info/
+.venv/
+venv/
+
+#stray plots in the project root
+/*.png
+
+#data and model files anywhere in the repo
+*.fif
+*.snirf
+*.nc
+*.pkl
+*.npy
+*.npz
+*.mat
+*.h5
+*.hdf5
+*.edf
+*.xdf
+
+#secrets and local environment
+.env
+
+#test coverage and packaging output
+.coverage
+htmlcov/
+build/
+dist/
+

@@ -1,0 +1,27 @@
+# mSPoC preprocessing: band-passed EEG at its native rate, fNIRS downsampled to 1 Hz
+# so mSPoC's epochs are about 1 s long.
+eeg_feature: bandpassed
+fnirs_srate: 7.4
+fnirs_mspoc_srate: 1.0
+downsample_method: resample
+trim_pre_sec: 5.0        # recording kept from first onset - 5 s
+trim_post_sec: 20.0      # ... until last stimulus end + 20 s
+
+# EEG: cleaned (broadband filter + ICA), then the feature is taken from feature_band.
+eeg:
+  bandpass: [1.0, 45.0]      # Hz, before ICA
+  ica_n_components: 15       # capped at the number of non-interpolated channels
+  ica_method: picard
+  random_state: 42
+  feature_band: [8.0, 12.0]  # alpha; the EEG ground truth uses the same band
+  drop_interpolated: true    # interpolated channels make the EEG covariance singular,
+                             # which mSPoC cannot use
+
+# fNIRS: OD, motion correction (TDDR, wavelet), haemoglobin, band-pass, HbO.
+fnirs:
+  dpf: 6.0                   # differential pathlength factor
+  bandpass: [0.01, 0.6]      # Hz; the fNIRS ground truth is filtered the same way
+
+# A run that fails one of these stops the pipeline (src/preprocessing/check.py).
+checks:
+  min_window_coverage: 0.9   # kept data must cover this fraction of the stimulus window

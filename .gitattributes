@@ -1,0 +1,6 @@
+*.ipynb filter=nbstripout
+*.zpln filter=nbstripout
+*.ipynb diff=ipynb
+
+# The tutorials keep their outputs, so they can be read on GitHub without running them.
+notebooks/*.ipynb -filter

@@ -1,0 +1,31 @@
+# The experiment the tutorial notebooks run: plain CCA as the baseline and three
+# regularised methods, with classification. The grids are narrowed to a few values
+# around what the full grids of grids.yaml select, so a whole run takes a few minutes.
+# For real results use the full grids, e.g. default.yaml.
+name: tutorial
+hand: both
+pruning: ../pruning/default.yaml
+preprocessing: ../preprocessing/full_recording.yaml
+
+unmixing:
+  grids: ../unmixing/grids.yaml
+  methods: [CCA, SparseCCA, ElasticNetCCA, ElasticNetTCCA]
+  metrics: [joint_avg, canonical_correlation_avg]
+  # n_top: the pair of each hand is chosen among the first 10; a source is often not
+  # among the strongest two pairs
+  assignment: { method: ground_truth, n_top: 10, eeg_weight: 1.0, fnirs_weight: 1.0 }
+  n_components: null   # fit all pairs
+  grid_overrides:
+    SparseCCA:      { l1_reg: { eeg: [0.1, 0.25], fnirs: [0.1, 0.2] } }
+    ElasticNetCCA:  { l1_reg: { eeg: [0.1, 0.2], fnirs: [0.1, 0.2] }, l2_reg: { eeg: [1.0], fnirs: [1.0, 1.5] } }
+    ElasticNetTCCA: { l1_reg: { eeg: [0.2], fnirs: [0.2] }, l2_reg: { eeg: [1.0], fnirs: [1.2, 1.5] },
+                      time_shifts: [[0, 5], [0, 7]] }
+  n_jobs: 8
+
+classification:   # rLDA on the recovered components
+  classes: [left, right]
+  rest_class: rest
+  feature_sets: [eeg_fnirs, eeg, fnirs]
+  baseline_window: [-2.0, 0.0]                       # s relative to onset
+  eeg_intervals: [[0.5, 4.5], [5.5, 8.0]]            # s after onset, one feature each
+  fnirs_intervals: [[2.0, 5.0], [5.0, 8.0], [8.0, 10.0]]   # ends before the next trial

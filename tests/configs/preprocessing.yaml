@@ -1,0 +1,20 @@
+# Test fixture, CCA-family preprocessing (band-power EEG).
+eeg_feature: bandpower
+fnirs_srate: 7.4
+downsample_method: resample
+trim_pre_sec: 5.0
+trim_post_sec: 8.0
+
+eeg:
+  bandpass: [1.0, 45.0]
+  ica_n_components: 15
+  ica_method: picard
+  random_state: 42
+  feature_band: [8.0, 12.0]
+
+fnirs:
+  dpf: 6.0
+  bandpass: [0.01, 0.6]
+
+checks:
+  min_window_coverage: 0.9

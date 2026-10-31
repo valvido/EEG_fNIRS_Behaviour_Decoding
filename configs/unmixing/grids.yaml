@@ -1,0 +1,66 @@
+# Hyperparameter grids, one per method. Every combination of a method's values is
+# tried in the selection CV. Read by the unmixing module, which builds the grid:
+# - l1_reg / l2_reg: one list per modality; every (eeg, fnirs) pair is tried
+# - time_shifts: a list of shift sets, in seconds (tCCA family and mSPoC alike)
+# - max_iter / N_restarts / tol (mSPoC only): a list of values
+# Each method accepts only its own hyperparameters (src/unmixing/models.py, METHODS);
+# any other key is rejected. Fixed settings (shift_source, scale, N_components, the
+# Laplacians, the seed) are never grid keys.
+# An experiment can replace parts of a grid with unmixing.grid_overrides.
+
+CCA: {}
+
+tCCA:
+  time_shifts: [[0, 7], [0, 5], [0, 3, 5, 7],[0,2,4,5]]
+
+SparseCCA:
+  l1_reg:
+    eeg:   [0.05, 0.09, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5]
+    fnirs: [0.05, 0.09, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5]
+
+RidgeCCA:
+  l2_reg:
+    eeg:   [0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 1.0, 3.0, 5.0]
+    fnirs: [0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 1.0, 3.0, 5.0]
+
+ElasticNetCCA:
+  l1_reg:
+    eeg:   [0.02, 0.05, 0.1, 0.15, 0.2]
+    fnirs: [0.02, 0.05, 0.1, 0.15, 0.2]
+  l2_reg:
+    eeg:   [1.0, 1.2, 1.5, 2.0]
+    fnirs: [1.0, 1.2, 1.5, 2.0]
+
+ElasticNetTCCA:
+  l1_reg:
+    eeg:   [0.02, 0.05, 0.1, 0.15, 0.2]
+    fnirs: [0.02, 0.05, 0.1, 0.15, 0.2]
+  l2_reg:
+    eeg:   [1.0, 1.2, 1.5, 2.0]
+    fnirs: [1.0, 1.2, 1.5, 2.0]
+  time_shifts: [[0, 7], [0, 5], [0, 3, 5, 7]]
+
+StructuredSparseCCA:
+  l1_reg:
+    eeg:   [0.02, 0.05, 0.1, 0.15, 0.2]
+    fnirs: [0.02, 0.05, 0.1, 0.15, 0.2]
+  l2_reg:
+    eeg:   [1.0, 1.2, 1.5, 2.0]
+    fnirs: [1.0, 1.2, 1.5, 2.0]
+
+StructuredSparseTCCA:
+  l1_reg:
+    eeg:   [0.02, 0.05, 0.1, 0.15, 0.2]
+    fnirs: [0.02, 0.05, 0.1, 0.15, 0.2]
+  l2_reg:
+    eeg:   [1.0, 1.2, 1.5, 2.0]
+    fnirs: [1.0, 1.2, 1.5, 2.0]
+  time_shifts: [[0, 7], [0, 5], [0, 3, 5, 7]]
+
+# mSPoC: the shifts model the hemodynamic delay between EEG power and fNIRS. Small
+# grid: every fit runs N_restarts times up to max_iter iterations.
+mSPoC:
+  time_shifts: [[0, 7], [0, 5], [0, 3, 5, 7]]
+  max_iter: [300]
+  N_restarts: [50]
+  tol: [1.0e-4]

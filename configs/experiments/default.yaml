@@ -1,0 +1,24 @@
+# Whole recordings, GT-free selection metric, then rLDA classification.
+name: all_cca_full_recording
+hand: both
+pruning: ../pruning/default.yaml
+preprocessing: ../preprocessing/full_recording.yaml
+
+unmixing:
+  grids: ../unmixing/grids.yaml
+  methods: [CCA, tCCA, SparseCCA, RidgeCCA, ElasticNetCCA, ElasticNetTCCA, StructuredSparseCCA, StructuredSparseTCCA]
+  metrics: [canonical_correlation_avg]
+  assignment: { method: ground_truth, n_top: 10, eeg_weight: 1.0, fnirs_weight: 1.0 }
+  n_components: 11   
+  laplacian:
+    eeg:   { method: gaussian_normalized, distance: euclidean, normed: true, sigma: median }
+    fnirs: { method: gaussian_normalized, distance: euclidean, normed: true, sigma: median }
+  n_jobs: 8
+
+classification:   # rLDA on the recovered sources; values below are the defaults
+  classes: [left, right]
+  rest_class: rest
+  feature_sets: [eeg_fnirs, eeg, fnirs]
+  baseline_window: [-2.0, 0.0]                        # s relative to onset
+  eeg_intervals: [[0.5, 4.5], [5.5, 8.0], ]             # s after onset, one feature each
+  fnirs_intervals: [[2.0, 5.0], [5.0, 8.0], [8.0, 11.0]]

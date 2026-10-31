@@ -1,0 +1,14 @@
+# Motor channels of the Buccino montage, per modality and hand, for the
+# "motor_channels" pair assignment, chosen by anatomy only. EEG: C3 or C4 and its
+# lateral neighbours over the hand area, and C1 or C2 towards the more medial arm
+# area, so that arm trials merged into a side's class are covered too. Pruning can
+# drop any of them (C1 and C2 sit next to the FCz reference and are often flagged);
+# a missing channel is skipped. fNIRS: the four channels whose midpoints lie about
+# 18 mm from C3 or C4 (configs/montages/buccino_fnirs.tsv); the next ones are about
+# 39 mm away.
+eeg:
+  right_hand: [C3, FC5, CP5, C1]
+  left_hand: [C4, FC6, CP6, C2]
+fnirs:
+  right_hand: [C3A, C3M, C3L, Cp3A]
+  left_hand: [C4A, C4M, C4L, Cp4A]

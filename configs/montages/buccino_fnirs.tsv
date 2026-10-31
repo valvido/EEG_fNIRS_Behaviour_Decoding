@@ -1,0 +1,47 @@
+# Buccino et al. (2016) fNIRS probe: which optodes form each channel, as 10-5 sites.
+# Reconstructed from Fig 1 of the paper (doi:10.1371/journal.pone.0146610): 6 sources
+# and 6 detectors per hemisphere on the rows FFC, FCC, CCP, CPP. The figure draws the
+# channels of the left hemisphere only; the right hemisphere mirrors them. A label
+# names the cell around a 10-10 site and its side: C3A is the anterior side of the
+# cell around C3 (Anterior, Posterior, Lateral, Medial).
+# Checked against Buccino's thesis (Fig 3.5a and the text beside it), which draws both
+# hemispheres: a 4 by 3 grid per hemisphere, sources and detectors alternating, corner
+# sources with 2 detectors and internal ones with 4. The thesis lists the 34 channels
+# left to right, top to bottom (its fourth entry, a second Fc3A, is a typo for Fc4A);
+# the data files store them left hemisphere first. The layout is matched by name, so
+# the order does not matter.
+channel	source	detector
+Fc3A	FFC3h	FFC5h
+Fc1A	FFC3h	FFC1h
+Fc3L	FCC5h	FFC5h
+Fc3M	FFC3h	FCC3h
+Fc1M	FCC1h	FFC1h
+C3A	FCC5h	FCC3h
+C1A	FCC1h	FCC3h
+C3L	FCC5h	CCP5h
+C3M	CCP3h	FCC3h
+C1M	FCC1h	CCP1h
+Cp3A	CCP3h	CCP5h
+Cp1A	CCP3h	CCP1h
+Cp3L	CPP5h	CCP5h
+Cp3M	CCP3h	CPP3h
+Cp1M	CPP1h	CCP1h
+Cp3P	CPP5h	CPP3h
+Cp1P	CPP1h	CPP3h
+Fc2A	FFC4h	FFC2h
+Fc4A	FFC4h	FFC6h
+Fc2M	FCC2h	FFC2h
+Fc4M	FFC4h	FCC4h
+Fc4L	FCC6h	FFC6h
+C2A	FCC2h	FCC4h
+C4A	FCC6h	FCC4h
+C2M	FCC2h	CCP2h
+C4M	CCP4h	FCC4h
+C4L	FCC6h	CCP6h
+Cp2A	CCP4h	CCP2h
+Cp4A	CCP4h	CCP6h
+Cp2M	CPP2h	CCP2h
+Cp4M	CCP4h	CPP4h
+Cp4L	CPP6h	CCP6h
+Cp2P	CPP2h	CPP4h
+Cp4P	CPP6h	CPP4h

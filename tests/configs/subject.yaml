@@ -1,0 +1,15 @@
+# Test fixture. The data folder does not exist, so no simulation config is attached
+# and the tests behave the same with or without data on the machine.
+subject_id: test_subject
+format: synthetic
+paths:
+  data: data/test_fixture/test_subject
+  rest_eeg: data/test_fixture/test_subject/rest-raw.fif
+  rest_fnirs: data/test_fixture/test_subject/rest.snirf
+montage:
+  eeg:
+    standard: standard_1020
+  fnirs:
+    recording: true                  # optode positions from each run's SNIRF
+groups: [a, b, c]
+test_group: b

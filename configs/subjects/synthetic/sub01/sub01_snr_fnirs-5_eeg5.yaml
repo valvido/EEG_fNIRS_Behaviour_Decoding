@@ -1,0 +1,16 @@
+# Example synthetic subject: one simulated dataset (fNIRS SNR -5 dB, EEG SNR 5 dB) of
+# subject sub01. Copy this file for every subject and SNR you simulate; the file name
+# is the dataset name, and scripts/run_snr_sweep.py finds every *_snr_*.yaml here.
+subject_id: sub01
+format: synthetic
+paths:
+  data: data/synthetic/sub01_snr_fnirs-5_eeg5   # simulation_config.yaml is read from here
+  rest_eeg: data/background_recordings/sub01/sub01_sitting_pre_rest_1-raw.fif
+  rest_fnirs: data/background_recordings/sub01/sub01_sitting_pre_rest_1.snirf
+montage:
+  eeg:
+    standard: standard_1020
+  fnirs:
+    recording: true                  # optode positions from each run's SNIRF
+groups: [sitting_post_rest_1, sitting_post_rest_2, sitting_pre_rest_1, sitting_pre_rest_2, sitting_pre_rest_3]
+test_group: sitting_post_rest_1

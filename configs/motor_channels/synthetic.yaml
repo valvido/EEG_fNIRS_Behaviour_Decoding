@@ -1,0 +1,11 @@
+# Motor channels of the synthetic montage, per modality and hand, for the
+# "motor_channels" pair assignment. EEG: the electrodes the simulated sources sit
+# under. fNIRS: the channels with at least 0.8 of the strongest ground-truth HbO
+# mixing weight of each source (as in notebooks/synthetic_data/01_data_exploration),
+# so the fNIRS choice uses the ground truth and gives an upper bound.
+eeg:
+  right_hand: [C3]
+  left_hand: [C4]
+fnirs:
+  right_hand: [S1D12, S1D9, S1D11, S1D6]
+  left_hand: [S8D20, S8D25, S8D26]

@@ -1,0 +1,29 @@
+name: cedalion
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - numpy
+  - scipy
+  - scikit-learn
+  - pandas
+  - xarray
+  - matplotlib
+  - seaborn
+  - h5py
+  - pint
+  - pint-xarray
+  - netcdf4
+  - pyyaml
+  - jupyter
+  - ipykernel
+  - pip
+  - pip:
+    - mne
+    - mne-nirs
+    - mne-bids
+    - autoreject
+    - pyprep
+    - python-picard
+    

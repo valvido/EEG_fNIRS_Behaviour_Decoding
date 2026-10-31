@@ -1,0 +1,47 @@
+# Bad-channel detection, shared by every subject. Which recording it runs on is
+# subject information (paths.rest_eeg / paths.rest_fnirs in the subject YAML).
+random_state: 42
+
+# fNIRS detection window: the first window_sec seconds of the rest period. Nothing
+# before or after the rest period is used. The EEG is judged on the whole rest
+# recording.
+window_sec: 25.0
+
+eeg:
+  line_freqs: [50, 100]   # notched before detection: the hf_noise criterion measures
+                          # power above 50 Hz, where the line peaks sit
+  ransac: true
+  # Pass 1 judges each channel on its own, so it is valid on the recording reference.
+  # Its verdict decides which channels form the average reference.
+  pass1:
+    flat_threshold: 1.0e-15       # V; SD or MAD below this counts as flat
+    deviation_threshold: 5.0      # robust z of channel amplitude
+    hf_noise_threshold: 5.0       # robust z of >50 Hz noise-to-signal ratio
+  # Pass 2 compares channels against each other, so it only runs once the shared
+  # reference has been removed.
+  pass2:
+    correlation_secs: 1.0
+    correlation_threshold: 0.4    # lowest acceptable best-neighbour correlation
+    correlation_frac_bad: 0.1     # fraction of bad windows that condemns a channel
+                                  # (pyprep default 0.01)
+    ransac_n_samples: 50
+    ransac_sample_prop: 0.25
+    ransac_corr_thresh: 0.75
+    ransac_frac_bad: 0.4
+    ransac_window_secs: 5.0
+
+# The criteria are judged on a cleaned amplitude: the whole rest recording is
+# converted to optical density, motion corrected (TDDR, then wavelet) and high-pass
+# filtered, then cut to the window and converted back to amplitude.
+# A channel is kept only if it passes every criterion.
+fnirs:
+  highpass_hz: 0.01               # high-pass cutoff, removes slow drift
+  butter_order: 4                 # Butterworth filter order
+  sd_range_mm: [10, 45]           # source-detector distance
+  amp_range_v: [1.0e-3, 0.85]     # mean amplitude
+  snr_threshold: 3.0              # mean / std of the amplitude
+  sci_threshold: 0.5              # scalp coupling index, per window
+  psp_threshold: 0.05             # peak spectral power, per window
+  window_length_s: 5.0            # window for SCI and PSP
+  time_pass_fraction: 0.5         # fraction of windows a channel must pass
+                                  # SCI and PSP in together

@@ -1,0 +1,25 @@
+# CCA-family preprocessing for the Buccino data (fNIRS at 10.42 Hz). The session is
+# preprocessed whole and split into its blocks afterwards. Models are always fit on
+# the full recording, cut to the stimulus window; the input is never epoched.
+eeg_feature: bandpower
+fnirs_srate: 10.42       # Buccino fNIRS rate; EEG bandpower is brought to it, then aligned
+downsample_method: resample
+trim_pre_sec: 5.0        # recording kept from first onset - 5 s
+trim_post_sec: 8.0       # ... until last stimulus end + 8 s
+
+# EEG: cleaned (broadband filter + ICA), then the feature is taken from feature_band.
+eeg:
+  bandpass: [1.0, 45.0]      # Hz, before ICA
+  ica_n_components: 15       # capped at the number of non-interpolated channels
+  ica_method: picard
+  random_state: 42
+  feature_band: [8.0, 12.0]  # alpha; the EEG ground truth uses the same band
+
+# fNIRS: OD, motion correction (TDDR, wavelet), haemoglobin, band-pass, HbO.
+fnirs:
+  dpf: 6.0                   # differential pathlength factor
+  bandpass: [0.01, 0.6]      # Hz; the fNIRS ground truth is filtered the same way
+
+# A run that fails one of these stops the pipeline (src/preprocessing/check.py).
+checks:
+  min_window_coverage: 0.9   # kept data must cover this fraction of the stimulus window

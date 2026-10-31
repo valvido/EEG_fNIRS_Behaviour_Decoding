@@ -1,0 +1,17 @@
+# Buccino et al. (2016) hybrid EEG-fNIRS SMR BCI data, subject 10. The whole session
+# is one file; its blocks are the CV groups.
+subject_id: S10
+format: buccino
+paths:
+  mat: data/real_buccino/EEG-fNIRS hybrid SMR BCI data S9-S15/S10.mat
+montage:
+  eeg:
+    standard: standard_1005
+  fnirs:
+    layout: configs/montages/buccino_fnirs.tsv   # optode sites of each channel, from Fig 1
+    standard: standard_1005                      # places the sites (10-5 half positions)
+groups: [block_1, block_2, block_3, block_4, block_5]
+test_group: block_5
+trial_classes:          # stim trial types that make up each side; rest is in none
+  right: [right, right_arm]
+  left: [left, left_arm]

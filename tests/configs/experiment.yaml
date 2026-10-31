@@ -1,0 +1,17 @@
+# Test fixture: every CCA-family method. The tests narrow it with dataclasses.replace;
+# change it only together with the tests that read it.
+name: test_experiment
+hand: both
+pruning: pruning.yaml
+preprocessing: preprocessing.yaml
+
+unmixing:
+  grids: grids.yaml
+  methods: [CCA, tCCA, SparseCCA, RidgeCCA, ElasticNetCCA, ElasticNetTCCA, StructuredSparseCCA, StructuredSparseTCCA]
+  metrics: [joint_avg, isi_avg]
+  assignment: { method: ground_truth, n_top: 2, eeg_weight: 1.0, fnirs_weight: 1.0 }
+  n_components: null
+  laplacian:
+    eeg:   { method: gaussian_normalized, distance: euclidean, normed: true, sigma: median }
+    fnirs: { method: gaussian_normalized, distance: euclidean, normed: true, sigma: median }
+  n_jobs: 1
