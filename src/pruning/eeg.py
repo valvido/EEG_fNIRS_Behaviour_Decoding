@@ -10,6 +10,37 @@ from pyprep import NoisyChannels
 from src.config import EegPruningConfig
 
 
+def detect_bad_eeg_channels_by_recording(
+        eegs: dict[str, mne.io.Raw], cfg: EegPruningConfig, random_state: int,
+) -> tuple[dict[str, tuple[str, ...]], dict[str, dict[str, tuple[str, ...]]]]:
+    """
+    Detect bad EEG channels on every recording on its own, each judged whole.
+
+    Parameters
+    ----------
+    eegs : dict[str, mne.io.Raw]
+        The EEG of each recording, by recording name.
+    cfg : EegPruningConfig
+    random_state : int
+        Seed for pyprep.
+
+    Returns
+    -------
+    by_recording : dict[str, tuple[str, ...]]
+        Bad channels of each recording, sorted by name.
+    detail : dict[str, dict[str, tuple[str, ...]]]
+        Channels each criterion flagged in any recording: {"pass1": {...}, "pass2": {...}}.
+    """
+    by_recording, detail = {}, {}
+    for name, eeg in eegs.items():
+        by_recording[name], recording_detail = detect_bad_eeg_channels(eeg, cfg, random_state)
+        for pass_name, criteria in recording_detail.items():
+            merged = detail.setdefault(pass_name, {})
+            for criterion, channels in criteria.items():
+                merged[criterion] = tuple(sorted({*merged.get(criterion, ()), *channels}))
+    return by_recording, detail
+
+
 def detect_bad_eeg_channels(
         eeg: mne.io.Raw, cfg: EegPruningConfig,
         random_state: int) -> tuple[tuple[str, ...], dict[str, dict[str, tuple[str, ...]]]]:

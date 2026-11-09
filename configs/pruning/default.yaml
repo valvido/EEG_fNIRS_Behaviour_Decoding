@@ -1,16 +1,20 @@
-# Bad-channel detection, shared by every subject. Which recording it runs on is
-# subject information (paths.rest_eeg / paths.rest_fnirs in the subject YAML).
+# Bad-channel detection, shared by every subject. The EEG on each recording on its own
+# (synthetic: on the background recording of each group); the fNIRS on a window of the rest
+# period of each recording the reader selects (synthetic: the first minute of the earliest
+# background recording, 3 s left out at each end). A fNIRS channel bad in any of them is
+# dropped from every run.
 random_state: 42
 
-# fNIRS detection window: the first window_sec seconds of the rest period. Nothing
-# before or after the rest period is used. The EEG is judged on the whole rest
-# recording.
-window_sec: 25.0
+# fNIRS detection window: the first window_sec seconds of the rest period. Nothing before
+# or after the rest period is used.
+window_sec: 60.0
 
 eeg:
   line_freqs: [50, 100]   # notched before detection: the hf_noise criterion measures
                           # power above 50 Hz, where the line peaks sit
   ransac: true
+  motor_channels: [C3, C4]   # over the hand motor areas; any of them bad in any recording
+                             # stops the subject, since interpolation replaces its signal
   # Pass 1 judges each channel on its own, so it is valid on the recording reference.
   # Its verdict decides which channels form the average reference.
   pass1:
@@ -22,15 +26,16 @@ eeg:
   pass2:
     correlation_secs: 1.0
     correlation_threshold: 0.4    # lowest acceptable best-neighbour correlation
-    correlation_frac_bad: 0.1     # fraction of bad windows that condemns a channel
-                                  # (pyprep default 0.01)
+    correlation_frac_bad: 0.1     # fraction of bad windows that condemns a channel; pyprep's
+                                  # 0.01 flags a channel for 2 bad 1 s windows in a 175 s
+                                  # recording, which flagged C3 and C4 in two synthetic subjects
     ransac_n_samples: 50
     ransac_sample_prop: 0.25
     ransac_corr_thresh: 0.75
     ransac_frac_bad: 0.4
     ransac_window_secs: 5.0
 
-# The criteria are judged on a cleaned amplitude: the whole rest recording is
+# The criteria are judged on a cleaned amplitude: the whole recording is
 # converted to optical density, motion corrected (TDDR, then wavelet) and high-pass
 # filtered, then cut to the window and converted back to amplitude.
 # A channel is kept only if it passes every criterion.

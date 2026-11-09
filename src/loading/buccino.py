@@ -18,7 +18,6 @@ fNIRS channel uses is not in the file either: every channel gets a placeholder s
 and detector label of its own, which the subject's montage replaces
 (configs/montages/buccino_fnirs.tsv, reconstructed from Fig 1 of the paper).
 """
-import dataclasses
 import re
 from pathlib import Path
 
@@ -31,13 +30,15 @@ from src.config import SubjectConfig
 from src.loading.arrays import (build_eeg, build_fnirs_amplitude, build_geo3d,
                                 check_regular_time)
 from src.loading.files import read_mat
+from src.loading.rest import mark_rest_period
 from src.types import RawRecording
 
 REQUIRED_PATHS = ("mat",)
 
 # Event codes of data{3}, as the dataset's DataOrganization.txt lists them.
 BLOCK_START_CODE = 10
-TRIAL_TYPES = {1: "rest", 3: "right_arm", 4: "left_arm", 7: "right", 8: "left"}
+REST_TRIAL_TYPE = "rest"
+TRIAL_TYPES = {1: REST_TRIAL_TYPE, 3: "right_arm", 4: "left_arm", 7: "right", 8: "left"}
 
 # The paper gives 760 and 850 nm; the file does not say which of wl1, wl2 is which.
 # This order is assumed and is to be checked on the HbO/HbR response to the task.
@@ -69,16 +70,31 @@ def read_recordings(subject: SubjectConfig) -> list[RawRecording]:
     return [session]
 
 
-def read_rest(subject: SubjectConfig) -> RawRecording:
+def read_background(subject: SubjectConfig) -> list[RawRecording]:
     """
-    The session again, marked as one rest period from its start to its end. The
-    dataset has no rest recording, so pruning judges the EEG channels on the whole
-    session and the fNIRS channels on its first `window_sec` seconds, trials included.
+    None: the dataset has no recordings without a task.
     """
-    session = _read_session(subject.paths["mat"])
-    rest = pd.DataFrame({"onset": [0.0], "duration": [float(session.eeg.times[-1])],
-                         "value": [1.0], "trial_type": ["rest"]})
-    return dataclasses.replace(session, group="rest", stim=rest, blocks=None)
+    return []
+
+
+def select_pruning_recordings(recordings: list[RawRecording],
+                              backgrounds: dict[str, RawRecording]) -> list[RawRecording]:
+    """
+    The whole session, marked as one rest period. The session has none long enough: it
+    starts with a task within seconds, rest trials last 8 s and the longest stretch
+    without a task lasts 25 s on S1, 16.4 s on S2. The fNIRS criteria judge the coupling of the optodes
+    to the scalp (the cardiac pulse in SCI and PSP, the amplitude level), which a motor
+    task barely changes, while a whole session gives them far more windows to judge.
+
+    Parameters
+    ----------
+    recordings : list[RawRecording]
+        The session, as `read_recordings` returns it.
+    backgrounds : dict[str, RawRecording]
+        Not used: the dataset has none.
+    """
+    [session] = recordings
+    return [mark_rest_period(session, 0.0, float(session.fnirs.time[-1]))]
 
 
 # -------------------------------------------------------------------------

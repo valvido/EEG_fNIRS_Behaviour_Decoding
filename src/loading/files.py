@@ -40,13 +40,20 @@ def read_snirf(path: Path) -> tuple[xr.DataArray, xr.DataArray, pd.DataFrame]:
     return amp, geo3d, stim
 
 
-def read_mat(path: Path) -> dict:
+def read_mat(path: Path, structs_as_dicts: bool = False) -> dict:
     """
     The variables of a MATLAB file (format v7.2 or older), by name.
 
     Singleton dimensions are squeezed away, so a scalar comes back as a number, a
     vector as a 1-D array and a cell array as a 1-D object array. MATLAB's own header
     entries ("__header__", ...) are left out.
+
+    Parameters
+    ----------
+    path : Path
+    structs_as_dicts : bool
+        True: every struct comes back as a dict of its fields and every cell array of
+        structs as a list, for files that nest structs in cells (BBCI toolbox).
     """
-    variables = scipy.io.loadmat(path, squeeze_me=True)
+    variables = scipy.io.loadmat(path, squeeze_me=True, simplify_cells=structs_as_dicts)
     return {name: value for name, value in variables.items() if not name.startswith("__")}

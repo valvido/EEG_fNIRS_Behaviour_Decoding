@@ -49,6 +49,7 @@ def result() -> RunResult:
         cfg=cfg, subject=load_subject(CONFIGS / "subject.yaml"),
         bad_channels=BadChannels(eeg=("e1",), fnirs=("f9",),
                                  eeg_detail={"pass1": {"bad_by_flat": ("e1",)}},
+                                 eeg_by_recording={"background_1": ("e1",)},
                                  fnirs_detail={"snr": ("f9",)}),
         alignment=pd.DataFrame([{"group": r.group, "run": r.run, "eeg_samples": 100} for r in runs]),
         geometry=Geometry(eeg_channels=tuple(f"e{i}" for i in range(6)),

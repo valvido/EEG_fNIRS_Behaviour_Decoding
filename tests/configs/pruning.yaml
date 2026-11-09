@@ -1,7 +1,7 @@
 # Test fixture, a copy of the default values. No test runs pruning from it; the
 # experiment only needs a valid file to load.
 random_state: 42
-window_sec: 25.0
+window_sec: 60.0
 
 eeg:
   line_freqs: [50, 100]

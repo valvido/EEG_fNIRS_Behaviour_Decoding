@@ -59,7 +59,11 @@ def load_run(run_dir: str | Path) -> RunResult:
     bad_channels = BadChannels(
         eeg=tuple(bad["eeg"]), fnirs=tuple(bad["fnirs"]),
         eeg_detail={p: {k: tuple(v) for k, v in d.items()} for p, d in bad["eeg_detail"].items()},
-        fnirs_detail={k: tuple(v) for k, v in bad["fnirs_detail"].items()})
+        eeg_by_recording={name: tuple(channels)
+                          for name, channels in bad.get("eeg_by_recording", {}).items()},
+        fnirs_detail={k: tuple(v) for k, v in bad["fnirs_detail"].items()},
+        fnirs_by_recording={name: tuple(channels)
+                            for name, channels in bad.get("fnirs_by_recording", {}).items()})
 
     landscape = [FoldScore(method=row["method"], test_group=row["test_group"],
                            val_group=row["val_group"], params=params_from_json(row["params"]),

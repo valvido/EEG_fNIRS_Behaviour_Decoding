@@ -1,7 +1,7 @@
 """
 Tests for loading: the stop on non-finite raw EEG, the report of what was loaded, the
-ground-truth sources labelled by hand, the Buccino reader on a small MAT file laid
-out like the dataset's, and the montage applied from the subject config.
+ground-truth sources labelled by hand, the Buccino and Shin readers on small MAT files
+laid out like the datasets', and the montage applied from the subject config.
 """
 import dataclasses
 from pathlib import Path
@@ -16,9 +16,11 @@ from cedalion.dataclasses import PointType
 
 from src.config import EegMontageConfig, FnirsMontageConfig, MontageConfig, SubjectConfig
 from src.config.load import PROJECT_ROOT
-from src.loading import buccino, check_data_format
+from src.loading import (buccino, check_data_format, load_backgrounds, load_recordings,
+                         shin2017, synthetic)
 from src.loading.load import _check_eeg_finite, loading_report
 from src.loading.montage import apply_montage, check_montage, read_layout
+from src.loading.rest import EDGE_S, mark_rest_period
 from src.loading.synthetic import _tidy_sources, source_hands
 from src.types import RawRecording
 
@@ -64,16 +66,112 @@ def test_nan_outside_eeg_channels_is_ignored():
 
 def test_loading_report_lists_runs_by_group():
     subject = FakeSubject()
-    subject.paths = {"data": "data/de000", "rest_eeg": "rest-raw.fif",
-                     "rest_fnirs": "rest.snirf"}
+    subject.paths = {"data": "data/de000"}
     recordings = [make_recording("run_001", np.zeros((3, 50))),
                   make_recording("run_002", np.zeros((3, 50)))]
     assert loading_report(subject, recordings) == (
         "Loaded 2 runs\n"
         "  g1: run_001, run_002\n"
-        "  data: data/de000\n"
-        "  rest_eeg: rest-raw.fif\n"
-        "  rest_fnirs: rest.snirf")
+        "  data: data/de000")
+
+
+def with_fnirs(recording: RawRecording, start: float, end: float) -> RawRecording:
+    """`recording` with one fNIRS channel sampled at 1 Hz from `start` to `end` (s)."""
+    time = np.arange(start, end + 0.5)
+    fnirs = xr.DataArray(np.ones((1, 1, len(time))), dims=("channel", "wavelength", "time"),
+                         coords={"time": time})
+    return dataclasses.replace(recording, fnirs=fnirs)
+
+
+def synthetic_background(group: str) -> RawRecording:
+    """The 175 s background recording of `group`."""
+    recording = dataclasses.replace(make_recording(f"de000_{group}", np.zeros((3, 50))),
+                                    group=group)
+    return with_fnirs(recording, 0.0, 175.0)
+
+
+def test_synthetic_reference_is_the_background_of_the_group_recorded_earliest():
+    groups = ("sitting_post_rest_1", "sitting_pre_rest_2", "sitting_pre_rest_1")
+    [reference] = synthetic.select_pruning_recordings(
+        [], {group: synthetic_background(group) for group in groups})
+    assert reference.group == "sitting_pre_rest_1"
+
+
+def test_synthetic_rest_is_the_first_minute_of_the_background_without_its_edges():
+    [reference] = synthetic.select_pruning_recordings(
+        [], {"sitting_pre_rest_1": synthetic_background("sitting_pre_rest_1")})
+    assert list(reference.stim.trial_type) == ["rest"]
+    assert reference.stim.onset.iloc[0] == EDGE_S
+    assert reference.stim.duration.iloc[0] == synthetic.REST_S - 2 * EDGE_S
+
+
+def test_rest_period_shorter_than_its_edges_is_refused():
+    recording = with_fnirs(make_recording("run_001", np.zeros((3, 50))), 0.0, 100.0)
+    with pytest.raises(ValueError, match="no rest period"):
+        mark_rest_period(recording, 10.0, 10.0 + 2 * EDGE_S)
+
+
+def test_rest_period_starting_before_the_fnirs_is_refused():
+    recording = with_fnirs(make_recording("run_001", np.zeros((3, 50))), 0.0, 100.0)
+    with pytest.raises(ValueError, match="before the fNIRS"):
+        mark_rest_period(recording, -10.0, 50.0)
+
+
+def synthetic_subject(tmp_path, groups=("sitting_pre_rest_1", "sitting_post_rest_1")):
+    return SubjectConfig(subject_id="de000", name="de000", format="synthetic",
+                         paths={"data": tmp_path / "data", "background": tmp_path}, groups=groups,
+                         montage=MontageConfig(eeg=STANDARD_EEG,
+                                               fnirs=FnirsMontageConfig(recording=True)))
+
+
+def test_synthetic_background_is_one_recording_per_group_of_the_subject(tmp_path, monkeypatch):
+    read = []
+
+    def read_files(eeg, fnirs):
+        read.append((eeg.name, fnirs.name))
+        return make_recording(fnirs.stem, np.zeros((3, 50)))
+
+    monkeypatch.setattr(synthetic, "_read_rest_files", read_files)
+    backgrounds = synthetic.read_background(synthetic_subject(tmp_path))
+    assert read == [("de000_sitting_pre_rest_1-raw.fif", "de000_sitting_pre_rest_1.snirf"),
+                    ("de000_sitting_post_rest_1-raw.fif", "de000_sitting_post_rest_1.snirf")]
+    assert [background.group for background in backgrounds] == ["sitting_pre_rest_1",
+                                                                "sitting_post_rest_1"]
+
+
+def test_synthetic_missing_background_recording_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(synthetic, "_run_dirs", lambda subject, group: [])
+    with pytest.raises(FileNotFoundError, match="background recordings do not exist"):
+        synthetic.check(synthetic_subject(tmp_path))
+
+
+def test_real_dataset_has_no_backgrounds(tmp_path):
+    assert load_backgrounds(write_session(tmp_path / "S0.mat")) == {}
+    assert load_backgrounds(write_shin_subject(tmp_path)) == {}
+
+
+def test_backgrounds_are_keyed_by_group(tmp_path, monkeypatch):
+    background = dataclasses.replace(make_recording("background", np.zeros((3, 50))), group="a")
+    monkeypatch.setattr(synthetic, "read_background", lambda subject: [background])
+    monkeypatch.setattr("src.loading.load.apply_montage", lambda recordings, montage: recordings)
+    assert load_backgrounds(synthetic_subject(tmp_path)) == {"a": background}
+
+
+def test_background_eeg_with_nan_stops_loading(tmp_path, monkeypatch):
+    values = np.zeros((3, 50))
+    values[0, 3] = np.nan
+    subject = synthetic_subject(tmp_path)
+    monkeypatch.setattr(synthetic, "read_background",
+                        lambda subject: [make_recording("background", values)])
+    monkeypatch.setattr("src.loading.load.apply_montage", lambda recordings, montage: recordings)
+    with pytest.raises(ValueError, match="background"):
+        load_backgrounds(subject)
+
+
+def test_synthetic_group_with_an_unknown_name_is_refused():
+    with pytest.raises(ValueError, match="sitting_pre_rest"):
+        synthetic.select_pruning_recordings(
+            [], {"standing_rest_1": synthetic_background("standing_rest_1")})
 
 
 SIMULATION = {"source_config": {"trial_source_map": {"right": ["src_a"], "left": ["src_b"]}}}
@@ -199,12 +297,14 @@ def test_buccino_groups_must_name_blocks_in_the_session(tmp_path):
                                               montage=BUCCINO_MONTAGE))
 
 
-def test_buccino_rest_is_the_whole_session_as_one_rest_period(tmp_path):
-    rest = buccino.read_rest(write_session(tmp_path / "S0.mat"))
-    assert rest.group == "rest" and rest.blocks is None
-    assert len(rest.stim) == 1 and rest.stim.trial_type.iloc[0] == "rest"
-    assert rest.stim.onset.iloc[0] == 0.0
-    assert rest.stim.duration.iloc[0] == pytest.approx(rest.eeg.times[-1])
+def test_buccino_rest_is_the_whole_session_without_its_edges(tmp_path):
+    session = buccino.read_recordings(write_session(tmp_path / "S0.mat"))
+    [reference] = buccino.select_pruning_recordings(session, {})
+    fnirs_end = float(session[0].fnirs.time[-1])
+    assert reference.blocks is None
+    assert list(reference.stim.trial_type) == ["rest"]
+    assert reference.stim.onset.iloc[0] == pytest.approx(EDGE_S)
+    assert reference.stim.duration.iloc[0] == pytest.approx(fnirs_end - 2 * EDGE_S)
 
 
 def test_buccino_unknown_event_code_is_refused(tmp_path):
@@ -219,6 +319,144 @@ def test_buccino_irregular_time_stamps_are_refused(tmp_path):
     subject = write_session(tmp_path / "S0.mat", eeg_time=eeg_time)
     with pytest.raises(ValueError, match="time stamps deviate"):
         buccino.read_recordings(subject)
+
+
+# -------------------------------------------------------------------------
+# Shin reader
+# -------------------------------------------------------------------------
+SHIN_EEG_RATE, SHIN_NIRS_RATE, SHIN_SESSION_S = 10, 5, 120
+# The NIRS clock runs NIRS_LAG_S ahead of the EEG clock: it starts recording that much
+# before the EEG, enough for the minute of rest before the first instruction (28 s), and
+# records NIRS_EXTRA_S longer.
+NIRS_LAG_S, NIRS_EXTRA_S = 40.0, 55.0
+SHIN_ONSETS_MS = [30000, 50000, 70000, 90000]
+SHIN_EEG_CODES = [16, 32, 32, 16]
+SHIN_GROUPS = ("session1_block1", "session1_block2", "session3_block1")
+SHIN_MONTAGE = MontageConfig(
+    eeg=STANDARD_EEG,
+    fnirs=FnirsMontageConfig(layout=PROJECT_ROOT / "configs/montages/shin2017_fnirs.tsv",
+                             standard="standard_1005"))
+
+
+def write_shin_subject(folder: Path, nirs_jitter_ms=(0, 40, -40, 0),
+                       nirs_codes=(1, 2, 2, 1), groups=SHIN_GROUPS) -> SubjectConfig:
+    """
+    BBCI files of six sessions (motor imagery first, then alternating), all with the
+    same 4 trials: EEG channels C3, C4 (1 µV), VEOG, HEOG; NIRS channels C5CP5, C5C3
+    at 0.3 V (760 nm) and 0.6 V (850 nm). The NIRS markers lag the EEG's by
+    NIRS_LAG_S plus `nirs_jitter_ms`.
+    """
+    eeg_dir, nirs_dir = folder / "eeg", folder / "nirs"
+    eeg_dir.mkdir(parents=True)
+    nirs_dir.mkdir(parents=True)
+    n_eeg = SHIN_SESSION_S * SHIN_EEG_RATE
+    n_nirs = int((SHIN_SESSION_S + NIRS_EXTRA_S) * SHIN_NIRS_RATE)
+    titles = ["MI", "MA"] * 3
+    eeg_cnt = {"clab": cell("C3", "C4", "VEOG", "HEOG"), "fs": SHIN_EEG_RATE, "yUnit": "uV",
+               "x": np.ones((n_eeg, 4))}
+    nirs_x = np.hstack([np.full((n_nirs, 2), 0.3), np.full((n_nirs, 2), 0.6)])
+    nirs_cnt = {"clab": cell("C5CP5lowWL", "C5C3lowWL", "C5CP5highWL", "C5C3highWL"),
+                "fs": SHIN_NIRS_RATE, "yUnit": "V", "x": nirs_x,
+                "wavelengths": np.array([760, 850])}
+    eeg_mrk = {"time": np.array(SHIN_ONSETS_MS), "event": {"desc": np.array(SHIN_EEG_CODES)}}
+    nirs_time = np.array(SHIN_ONSETS_MS) + int(NIRS_LAG_S * 1000) + np.array(nirs_jitter_ms)
+    nirs_mrk = {"time": nirs_time, "event": {"desc": np.array(nirs_codes)}}
+    sessions = lambda content: cell(*[{**content, "title": title} for title in titles])
+    scipy.io.savemat(eeg_dir / "cnt.mat", {"cnt": sessions(eeg_cnt)})
+    scipy.io.savemat(eeg_dir / "mrk.mat", {"mrk": cell(*[eeg_mrk] * 6)})
+    scipy.io.savemat(nirs_dir / "cnt.mat", {"cnt": sessions(nirs_cnt)})
+    scipy.io.savemat(nirs_dir / "mrk.mat", {"mrk": cell(*[nirs_mrk] * 6)})
+    scipy.io.savemat(nirs_dir / "mnt.mat", {"mnt": {
+        "clab": cell("C5CP5", "C5C3"), "source": {"clab": cell("-", "C5")},
+        "detector": {"clab": cell("CP5", "C3")}, "sd": np.array([[2, 1], [2, 2]])}})
+    return SubjectConfig(subject_id="VP000", name="VP000", format="shin2017",
+                         paths={"eeg": eeg_dir, "nirs": nirs_dir}, groups=groups,
+                         montage=SHIN_MONTAGE, test_group=groups[-1])
+
+
+def test_shin_sessions_are_recordings_with_two_blocks_each(tmp_path):
+    session1, session3 = shin2017.read_recordings(write_shin_subject(tmp_path))
+    session_end = (SHIN_SESSION_S * SHIN_EEG_RATE - 1) / SHIN_EEG_RATE
+    assert (session1.group, session1.run, session3.run) == ("session", "session1", "session3")
+    # The second block starts with the instruction of its first trial, 2 s before 70 s.
+    assert session1.blocks == {"session1_block1": (0.0, 68.0),
+                               "session1_block2": (68.0, session_end)}
+    assert list(session3.blocks) == ["session3_block1", "session3_block2"]
+    assert session1.ground_truth is None
+
+
+def test_shin_trials_last_the_task_from_the_eeg_markers(tmp_path):
+    [session, _] = shin2017.read_recordings(write_shin_subject(tmp_path))
+    assert list(session.stim.columns) == ["onset", "duration", "value", "trial_type"]
+    assert list(session.stim.onset) == [30.0, 50.0, 70.0, 90.0]
+    assert list(session.stim.trial_type) == ["left", "right", "right", "left"]
+    assert (session.stim.duration == shin2017.TASK_S).all()
+
+
+def test_shin_nirs_is_put_on_the_eeg_clock_by_the_marker_lag(tmp_path):
+    [session, _] = shin2017.read_recordings(write_shin_subject(tmp_path))
+    time = session.fnirs.time.values
+    # NIRS sample i was taken at i / rate on its own clock, NIRS_LAG_S earlier on the
+    # EEG clock. Samples before the EEG are kept, those after it cut away.
+    assert time[0] == pytest.approx(-NIRS_LAG_S)
+    assert time[1] == pytest.approx(1 / SHIN_NIRS_RATE - NIRS_LAG_S)
+    assert time[-1] <= session.eeg.times[-1] < time[-1] + 1 / SHIN_NIRS_RATE
+
+
+def test_shin_nirs_wavelengths_and_optodes_come_from_the_files(tmp_path):
+    [session, _] = shin2017.read_recordings(write_shin_subject(tmp_path))
+    amp = session.fnirs
+    assert amp.dims == ("channel", "wavelength", "time")
+    assert list(amp.channel.values) == ["C5CP5", "C5C3"]
+    assert list(amp.source.values) == ["C5", "C5"] and list(amp.detector.values) == ["CP5", "C3"]
+    assert np.allclose(amp.sel(wavelength=760.0), 0.3)
+    assert np.allclose(amp.sel(wavelength=850.0), 0.6)
+    assert session.geo3d.sizes["label"] == 0
+
+
+def test_shin_eeg_is_in_volts_with_its_eog_channels_typed(tmp_path):
+    [session, _] = shin2017.read_recordings(write_shin_subject(tmp_path))
+    assert session.eeg.ch_names == ["C3", "C4", "VEOG", "HEOG"]
+    assert session.eeg.get_channel_types() == ["eeg", "eeg", "eog", "eog"]
+    assert np.allclose(session.eeg.get_data(), 1e-6)
+
+
+def test_shin_markers_that_disagree_between_the_devices_are_refused(tmp_path):
+    with pytest.raises(ValueError, match="cannot be aligned"):
+        shin2017.read_recordings(write_shin_subject(tmp_path / "late",
+                                                    nirs_jitter_ms=(0, 0, 500, 0)))
+    with pytest.raises(ValueError, match="disagree on the trials"):
+        shin2017.read_recordings(write_shin_subject(tmp_path / "other_hand",
+                                                    nirs_codes=(1, 2, 1, 1)))
+
+
+def test_shin_groups_must_name_blocks_of_motor_imagery_sessions(tmp_path):
+    subject = write_shin_subject(tmp_path)
+    for groups in [("session2_block1",), ("session1_block3",), ("block_1",)]:
+        with pytest.raises(ValueError, match="do not name a block"):
+            shin2017.check(dataclasses.replace(subject, groups=groups, test_group=None))
+
+
+def test_shin_rest_is_the_minute_before_the_first_instruction_of_every_session(tmp_path):
+    sessions = shin2017.read_recordings(write_shin_subject(tmp_path))
+    references = shin2017.select_pruning_recordings(sessions, {})
+    assert [reference.run for reference in references] == ["session1", "session3"]
+    # The first instruction is 2 s before the first task, at 30 s.
+    for reference in references:
+        assert reference.blocks is None
+        assert list(reference.stim.trial_type) == ["rest"]
+        assert reference.stim.onset.iloc[0] == pytest.approx(28.0 - 60.0 + EDGE_S)
+        assert reference.stim.duration.iloc[0] == pytest.approx(60.0 - 2 * EDGE_S)
+
+
+def test_shin_loads_with_the_datasets_montage(tmp_path):
+    subject = write_shin_subject(tmp_path)
+    check_data_format(subject)
+    session, _ = load_recordings(subject)
+    assert list(session.fnirs.source.values) == ["C5", "C5"]
+    labels = set(session.geo3d.label.values)
+    assert {"C5", "CP5", "C3"} <= labels
+    assert session.eeg.get_montage() is not None
 
 
 # -------------------------------------------------------------------------

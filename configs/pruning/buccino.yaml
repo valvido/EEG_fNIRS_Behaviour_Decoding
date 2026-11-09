@@ -1,18 +1,20 @@
-# Bad-channel detection for the Buccino data. The dataset has no rest recording: the
-# reader marks the whole session as one rest period, trials included. Only the line
-# frequency, the window and the amplitude range differ from default.yaml, each set from
-# notebooks/real_data_buccino/01_data_exploration.ipynb run on all 15 subjects.
+# Bad-channel detection for the Buccino data. The dataset has no rest recording, and its
+# stretches without a task are short (25 s on S1, 16.4 s on S2): the fNIRS is judged on the
+# whole session (3 s left out at each end), whose tasks barely change the coupling the
+# criteria measure. Only the
+# window, the line frequency and the amplitude range differ from default.yaml, each set
+# from notebooks/real_data_buccino/01_data_exploration.ipynb run on all 15 subjects.
 random_state: 42
 
-# fNIRS detection window: the first window_sec seconds of the rest period. Nothing
-# before or after the rest period is used. The EEG is judged on the whole rest
-# recording, here the whole session.
-window_sec: 3600.0   # the whole session (the longest lasts 1626 s)
+# fNIRS detection window: the first window_sec seconds of the rest period, here the
+# session.
+window_sec: 3600.0   # longer than any session (the longest lasts 1626 s)
 
 eeg:
   line_freqs: [60, 120]   # 60 Hz mains: a peak at 60 Hz in all 15 subjects (12 to
                           # 300 times the neighbouring power), none at 50 Hz
   ransac: true
+  motor_channels: [C3, C4]   # over the hand motor areas; any of them bad stops the subject
   # Pass 1 judges each channel on its own, so it is valid on the recording reference.
   # Its verdict decides which channels form the average reference.
   pass1:
@@ -24,15 +26,16 @@ eeg:
   pass2:
     correlation_secs: 1.0
     correlation_threshold: 0.4    # lowest acceptable best-neighbour correlation
-    correlation_frac_bad: 0.1     # fraction of bad windows that condemns a channel
-                                  # (pyprep default 0.01)
+    correlation_frac_bad: 0.1     # fraction of bad windows that condemns a channel; pyprep's
+                                  # 0.01 flags a channel for 2 bad 1 s windows in a 175 s
+                                  # recording, which flagged C3 and C4 in two synthetic subjects
     ransac_n_samples: 50
     ransac_sample_prop: 0.25
     ransac_corr_thresh: 0.75
     ransac_frac_bad: 0.4
     ransac_window_secs: 5.0
 
-# The criteria are judged on a cleaned amplitude: the whole rest recording is
+# The criteria are judged on a cleaned amplitude: the whole recording is
 # converted to optical density, motion corrected (TDDR, then wavelet) and high-pass
 # filtered, then cut to the window and converted back to amplitude.
 # A channel is kept only if it passes every criterion.

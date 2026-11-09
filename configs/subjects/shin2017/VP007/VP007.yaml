@@ -1,0 +1,20 @@
+# Shin et al. (2017) open access EEG+NIRS dataset A (left vs right hand motor
+# imagery), subject 7. Each motor imagery session (1, 3, 5) is recorded in one piece;
+# its two blocks of 10 trials are the CV groups.
+subject_id: VP007
+format: shin2017
+paths:
+  eeg: "data/real_shin_luhmann/EEG_06-10/subject 07/with occular artifact"
+  nirs: "data/real_shin_luhmann/NIRS_01-29/subject 07"
+montage:
+  eeg:
+    standard: standard_1005
+  fnirs:
+    layout: configs/montages/shin2017_fnirs.tsv   # optode sites of each channel, from mnt.mat
+    standard: standard_1005                       # places the sites
+groups: [session1_block1, session1_block2, session3_block1, session3_block2,
+         session5_block1, session5_block2]
+test_group: session5_block2
+trial_classes:          # stim trial types that make up each side
+  right: [right]
+  left: [left]

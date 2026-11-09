@@ -3,7 +3,7 @@ The data objects pipeline modules hand each other. No logic.
 
 Each type is added together with the module that produces it.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import mne
 import pandas as pd
@@ -49,7 +49,9 @@ class RawRecording:
     different type, so the stage of the data is always visible from its class.
 
     Both modalities share one clock: `eeg.times` and `fnirs.time` are in seconds from
-    the start of the EEG recording, and `stim` onsets are on that clock.
+    the start of the EEG recording, and `stim` onsets are on that clock. The fNIRS may
+    start before the EEG (negative times) when the device recorded the rest before it;
+    preprocessing cuts both to the stimulus window.
 
     Attributes
     ----------
@@ -89,25 +91,34 @@ class RawRecording:
 @dataclass(frozen=True)
 class BadChannels:
     """
-    The channels pruning found bad on the subject's rest recording, and why.
+    The channels pruning found bad for the subject, and why.
 
     Attributes
     ----------
     eeg : tuple[str, ...]
-        Bad EEG channels. They are interpolated, so the EEG montage stays fixed.
+        Bad EEG channels. They are interpolated, so the EEG montage stays fixed. On a
+        PrunedRecording, those of its own recording; on a RunResult, those bad in any of
+        the subject's recordings.
     fnirs : tuple[str, ...]
-        Bad fNIRS channels. They are dropped.
+        Bad fNIRS channels: those bad in any recording the fNIRS was judged on. They are
+        dropped from every run.
     eeg_detail : dict[str, dict[str, tuple[str, ...]]]
-        Channels flagged by each pyprep criterion, per pass:
+        Channels flagged by each pyprep criterion in any recording judged, per pass:
         {"pass1": {"bad_by_flat": (...), ...}, "pass2": {"bad_by_correlation": (...), ...}}.
     fnirs_detail : dict[str, tuple[str, ...]]
-        Channels failing each quality criterion: "sd_dist", "mean_amp", "snr",
-        "sci_psp".
+        Channels failing each quality criterion in any recording judged: "sd_dist",
+        "mean_amp", "snr", "sci_psp".
+    eeg_by_recording : dict[str, tuple[str, ...]]
+        Bad EEG channels of each recording judged, by recording name.
+    fnirs_by_recording : dict[str, tuple[str, ...]]
+        Bad fNIRS channels of each recording judged, by recording name.
     """
     eeg: tuple[str, ...]
     fnirs: tuple[str, ...]
     eeg_detail: dict[str, dict[str, tuple[str, ...]]]
     fnirs_detail: dict[str, tuple[str, ...]]
+    eeg_by_recording: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    fnirs_by_recording: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -138,7 +149,7 @@ class PrunedRecording:
         As loaded, over all channels. Matching it to the kept channels is up to the
         evaluation.
     bad_channels : BadChannels
-        What was interpolated and dropped.
+        What was interpolated in this run and dropped.
     blocks : dict[str, tuple[float, float]] | None
         As in the RawRecording: the CV group of each block of a session recorded in
         one piece, mapped to its start and end (s). None when every run is its own
