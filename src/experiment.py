@@ -10,7 +10,8 @@ from datetime import datetime
 
 from src.classification import classify
 from src.config import ExperimentConfig, SubjectConfig, check_subject_fits
-from src.loading import check_data_format, load_recordings, load_rest, loading_report
+from src.loading import (check_data_format, load_backgrounds, load_recordings,
+                         loading_report, select_pruning_recordings)
 from src.preprocessing import (alignment_report, alignment_table, preprocess_recordings,
                                split_into_blocks)
 from src.pruning import prune_recordings
@@ -52,22 +53,30 @@ def run(cfg: ExperimentConfig, subject: SubjectConfig,
                 f"({subject.format}, groups={list(subject.groups)}, "
                 f"test_group={subject.test_group})")
 
-    # 1. Loading: every run of the subject's groups, plus the rest recording that
-    #    pruning judges channel quality on. Nothing is processed yet.
+    # 1. Loading: every run of the subject's groups, and (synthetic) the background
+    #    recording of each. The reader picks the recordings pruning judges fNIRS quality
+    #    on and marks their rest periods. Nothing is processed yet.
     recordings = load_recordings(subject)
-    rest = load_rest(subject)
+    backgrounds = load_backgrounds(subject)
+    references = select_pruning_recordings(subject, recordings, backgrounds)
     logger.info(loading_report(subject, recordings))
 
-    # 2. Pruning: bad channels found once on the rest recording, then interpolated
-    #    (EEG) or dropped (fNIRS) in every run. The rest recording is not used after.
-    #    A bad C3 or C4 stops the run: the subject cannot be used.
+    # 2. Pruning: bad EEG channels found on each recording on its own (synthetic: on the
+    #    background recording of each group) and interpolated there; bad fNIRS channels
+    #    found on the rest period of each reference, and those bad in any of them dropped
+    #    from every run. The references are not used after. A bad motor electrode
+    #    (eeg.motor_channels in the pruning YAML) in any recording stops the run: the
+    #    subject cannot be used.
     notch_hz = ", ".join(f"{f:g}" for f in cfg.pruning.eeg.line_freqs)
     logger.warning(f"Pruning notches the EEG at {notch_hz} Hz before bad-channel detection "
                    f"(eeg.line_freqs in the pruning YAML that the experiment's 'pruning:' "
                    f"names). It must match the mains frequency of the recording.")
-    recordings, bad_channels = prune_recordings(recordings, rest, cfg.pruning)
-    logger.info(f"Pruning: EEG interpolated {list(bad_channels.eeg)}; "
-                f"fNIRS dropped {len(bad_channels.fnirs)} channels")
+    recordings, bad_channels = prune_recordings(recordings, references, backgrounds,
+                                                cfg.pruning)
+    n_bad_fnirs = {name: len(bad) for name, bad in bad_channels.fnirs_by_recording.items()}
+    logger.info(f"Pruning: EEG interpolated {dict(bad_channels.eeg_by_recording)}; "
+                f"fNIRS dropped {len(bad_channels.fnirs)} channels (bad per recording: "
+                f"{n_bad_fnirs})")
 
     # 3. Preprocessing: per run, the EEG feature and HbO on one time axis, cut to the
     #    stimulus window and z-scored, with the ground truth transformed alike. A run

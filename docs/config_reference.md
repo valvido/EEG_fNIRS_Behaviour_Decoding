@@ -205,15 +205,23 @@ combination: ElasticNetCCA with the current grid is 25 x 16 = 400 combinations.
 
 ## Pruning file (`configs/pruning/*.yaml`)
 
-Finds the subject's bad channels once, on the rest recording named in the subject
-file, and removes them from every run: bad EEG channels are interpolated, bad fNIRS
-channels dropped. The EEG is judged on the whole rest recording, the fNIRS on the
-first `window_sec` seconds of its rest period.
+Finds the subject's bad channels once and removes them from every run: bad EEG channels
+are interpolated, bad fNIRS channels dropped.
+
+The EEG is judged whole, on each recording on its own: for synthetic data on the background
+recording of each group, whose runs all get its list, otherwise on the recording itself. A
+channel bad in a recording is interpolated in that recording only. A bad motor electrode
+(`eeg.motor_channels`) in any recording stops the subject. The fNIRS is judged on a window of
+the rest period of each recording the reader selects, 3 s left out at each end of that
+period: the first minute of the earliest background recording (synthetic), the minute of
+rest before the first instruction of every session (`shin2017`), or the whole session
+(`buccino`, which has no rest period long enough). A fNIRS channel bad in any of them is
+dropped from every run.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `random_state` | integer | `42` | Seed for pyprep's RANSAC. |
-| `window_sec` | number (s) | `25.0` | fNIRS only: seconds of rest judged, from the rest onset. Never runs past the end of rest. |
+| `window_sec` | number (s) | `60.0` | Seconds of rest the fNIRS is judged on, from the rest onset. Never runs past the end of rest. |
 | `eeg` | section | see below | EEG detection. |
 | `fnirs` | section | see below | fNIRS detection. |
 
@@ -226,12 +234,13 @@ pass is bad.
 |---|---|---|---|
 | `line_freqs` | list (Hz) | `[50, 100]` | Notched before detection. |
 | `ransac` | true/false | `true` | Run the RANSAC criterion in pass 2. |
+| `motor_channels` | list | `[C3, C4]` | Electrodes over the hand motor areas. Any of them bad in any recording stops the subject; each must be in the EEG montage (`shin2017`: FCC3h, CCP3h, FCC4h, CCP4h). |
 | `pass1.flat_threshold` | number (V) | `1.0e-15` | SD or MAD below this counts as flat. |
 | `pass1.deviation_threshold` | number | `5.0` | Robust z-score of the channel amplitude. |
 | `pass1.hf_noise_threshold` | number | `5.0` | Robust z-score of the noise-to-signal ratio above 50 Hz. |
 | `pass2.correlation_secs` | number (s) | `1.0` | Window length of the correlation criterion. |
 | `pass2.correlation_threshold` | number | `0.4` | Lowest acceptable correlation with the best-matching other channel. |
-| `pass2.correlation_frac_bad` | number | `0.1` | Fraction of bad windows that makes a channel bad (also for dropout). pyprep's default is 0.01. |
+| `pass2.correlation_frac_bad` | number | `0.1` | Fraction of bad windows that makes a channel bad (also for dropout). |
 | `pass2.ransac_n_samples` | integer | `50` | RANSAC: number of random channel subsets. |
 | `pass2.ransac_sample_prop` | number | `0.25` | RANSAC: fraction of channels per subset. |
 | `pass2.ransac_corr_thresh` | number | `0.75` | RANSAC: lowest acceptable correlation with the prediction. |
@@ -240,7 +249,7 @@ pass is bad.
 
 ### `fnirs`
 
-Judged on a cleaned amplitude: the whole rest recording is converted to optical
+Judged on a cleaned amplitude: the whole recording is converted to optical
 density, motion corrected (TDDR, then wavelet) and high-pass filtered, then cut to the
 window and converted back to amplitude. A channel is kept only if it passes every
 check.
@@ -313,10 +322,10 @@ A run that fails stops the pipeline.
 |---|---|---|---|
 | `subject_id` | text | required | Subject ID; used to find the data files. |
 | `name` | text | the file's name | Name of this dataset, e.g. `sub01_snr_fnirs-5_eeg5`. Part of the results path, so runs at different SNRs get their own folders. |
-| `format` | text | required | Which reader loads the data. Only `synthetic` exists so far. |
-| `paths` | mapping | required | Data locations; the keys depend on the format. `synthetic` needs `data` (the simulator's output folder), `rest_eeg` and `rest_fnirs` (the rest recording pruning judges channels on). |
+| `format` | text | required | Which reader loads the data: `synthetic`, `buccino` (Buccino et al. 2016) or `shin2017` (Shin et al. 2017, dataset A). |
+| `paths` | mapping | required | Data locations; the keys depend on the format. `synthetic` needs `data` (the simulator's output folder) and `background` (the folder of the subject's background recordings). `buccino` needs `mat` (the subject's MAT file). `shin2017` needs `eeg` and `nirs`, the subject's two folders of BBCI files (`cnt.mat`, `mrk.mat`, and `mnt.mat` for the NIRS). |
 | `montage` | mapping | required | Electrode and optode positions; see below. The only place they are chosen. |
-| `groups` | list | required | Groups (background recordings) whose runs are used, each once. They are the cross-validation folds. For a session recorded in one piece (Buccino), the blocks `block_1`, `block_2`, ...: the session is preprocessed whole and then split into one run per listed block, in recording order. |
+| `groups` | list | required | Groups (background recordings) whose runs are used, each once. They are the cross-validation folds. For a session recorded in one piece, its blocks: the session is preprocessed whole and then split into one run per listed block, in recording order. Buccino: `block_1`, `block_2`, ... Shin: `session<k>_block<b>`, two blocks of 10 consecutive trials (5 per hand) in each motor imagery session k = 1, 3, 5, e.g. `session3_block2`. |
 | `test_group` | text or `null` | `null` | The group held out in non-nested evaluation. Must be one of `groups`; unmixing needs it. |
 
 ### `montage`
@@ -353,6 +362,13 @@ montage:                  # Buccino: optodes reconstructed from Fig 1 of the pap
     standard: standard_1005
   fnirs:
     layout: configs/montages/buccino_fnirs.tsv
+    standard: standard_1005
+
+montage:                  # Shin: optode sites of each channel from the dataset's mnt.mat
+  eeg:
+    standard: standard_1005
+  fnirs:
+    layout: configs/montages/shin2017_fnirs.tsv
     standard: standard_1005
 ```
 

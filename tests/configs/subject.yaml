@@ -4,8 +4,7 @@ subject_id: test_subject
 format: synthetic
 paths:
   data: data/test_fixture/test_subject
-  rest_eeg: data/test_fixture/test_subject/rest-raw.fif
-  rest_fnirs: data/test_fixture/test_subject/rest.snirf
+  background: data/test_fixture/background
 montage:
   eeg:
     standard: standard_1020

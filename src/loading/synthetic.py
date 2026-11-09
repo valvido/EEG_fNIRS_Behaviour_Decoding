@@ -11,13 +11,20 @@ Expected layout, with or without the inner <subject_id>/ folder:
         *_A_eeg_*.nc                ground truth: EEG mixing matrix
         *_A_fnirs_*.nc              ground truth: fNIRS mixing matrix
 
-The rest recording pruning judges channels on is the background recording the
-simulation was built on, at paths.rest_eeg / paths.rest_fnirs. Outside the pipeline,
-read_background_rest finds it from the subject ID alone, in the layout
+The background recordings the simulation was built on, without simulated sources, are in
+paths.background:
+
+    <paths.background>/<subject_id>_<group>-raw.fif
+    <paths.background>/<subject_id>_<group>.snirf
+
+Outside the pipeline, read_background_rest finds one from the subject ID alone, in the
+layout
 
     <data_root>/background_recordings/<subject_id>/<subject_id>_<recording>-raw.fif
     <data_root>/background_recordings/<subject_id>/<subject_id>_<recording>.snirf
 """
+import dataclasses
+import re
 from pathlib import Path
 
 import numpy as np
@@ -25,9 +32,17 @@ import xarray as xr
 
 from src.config import SubjectConfig
 from src.loading.files import read_fif, read_snirf
+from src.loading.rest import mark_rest_period
 from src.types import GroundTruth, RawRecording
 
-REQUIRED_PATHS = ("data", "rest_eeg", "rest_fnirs")
+REQUIRED_PATHS = ("data", "background")
+
+# Seconds at the start of the earliest background recording that pruning judges the
+# fNIRS on.
+REST_S = 60.0
+
+# A session's groups, named after the background recording they were simulated on.
+_GROUP = re.compile(r"sitting_(pre|post)_rest_(\d+)")
 
 # Ground-truth sources are labelled by the hand they belong to. 
 HAND_SOURCES = ("right_hand", "left_hand")
@@ -35,10 +50,16 @@ HAND_SOURCES = ("right_hand", "left_hand")
 
 def check(subject: SubjectConfig):
     """
-    Check that every group folder exists and holds at least one run.
+    Check that every group folder exists and holds at least one run, and that every
+    group has its background recording.
     """
     for group in subject.groups:
         _run_dirs(subject, group)
+    absent = [str(path) for group in subject.groups
+              for path in _background_files(subject, group) if not path.is_file()]
+    if absent:
+        raise FileNotFoundError(f"Subject '{subject.subject_id}': background recordings do "
+                                f"not exist: {absent}.")
 
 
 def read_recordings(subject: SubjectConfig) -> list[RawRecording]:
@@ -51,11 +72,54 @@ def read_recordings(subject: SubjectConfig) -> list[RawRecording]:
             for run_dir in _run_dirs(subject, group)]
 
 
-def read_rest(subject: SubjectConfig) -> RawRecording:
+def read_background(subject: SubjectConfig) -> list[RawRecording]:
     """
-    The background recording the simulation was built on, without ground truth.
+    The background recording of every group in `subject.groups`, in that order, each
+    with that group as its own.
     """
-    return _read_rest_files(subject.paths["rest_eeg"], subject.paths["rest_fnirs"])
+    return [dataclasses.replace(_read_rest_files(*_background_files(subject, group)), group=group)
+            for group in subject.groups]
+
+
+def _background_files(subject: SubjectConfig, group: str) -> tuple[Path, Path]:
+    """The EEG and fNIRS files of the background recording a group was simulated on."""
+    stem = subject.paths["background"] / f"{subject.subject_id}_{group}"
+    return stem.with_name(f"{stem.name}-raw.fif"), stem.with_name(f"{stem.name}.snirf")
+
+
+def select_pruning_recordings(recordings: list[RawRecording],
+                              backgrounds: dict[str, RawRecording]) -> list[RawRecording]:
+    """
+    The background recording of the group recorded earliest, its rest period marked as
+    its first REST_S seconds. That background is the start of a longer rest recording,
+    so it has no task in it.
+
+    Parameters
+    ----------
+    recordings : list[RawRecording]
+        Not used: the background recordings hold the rest without simulated sources.
+    backgrounds : dict[str, RawRecording]
+        The background recording of each group (`read_background`).
+    """
+    earliest = backgrounds[min(backgrounds, key=_recording_order)]
+    return [mark_rest_period(earliest, 0.0, REST_S)]
+
+
+def _recording_order(group: str) -> tuple[bool, int]:
+    """
+    Sort key putting a session's groups in the order they were recorded: pre_rest_1,
+    pre_rest_2, ..., then post_rest_1, post_rest_2, ...
+
+    Raises
+    ------
+    ValueError
+        If the group is not named sitting_pre_rest_<k> or sitting_post_rest_<k>.
+    """
+    match = _GROUP.fullmatch(group)
+    if match is None:
+        raise ValueError(f"Group '{group}' is not named sitting_pre_rest_<k> or "
+                         f"sitting_post_rest_<k>, so when it was recorded is not known.")
+    return match.group(1) == "post", int(match.group(2))
 
 
 def read_background_rest(subject_id: str, data_root: Path,

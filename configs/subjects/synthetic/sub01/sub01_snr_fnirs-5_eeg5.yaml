@@ -5,8 +5,7 @@ subject_id: sub01
 format: synthetic
 paths:
   data: data/synthetic/sub01_snr_fnirs-5_eeg5   # simulation_config.yaml is read from here
-  rest_eeg: data/background_recordings/sub01/sub01_sitting_pre_rest_1-raw.fif
-  rest_fnirs: data/background_recordings/sub01/sub01_sitting_pre_rest_1.snirf
+  background: data/background_recordings/sub01   # <subject_id>_<group>-raw.fif / .snirf per group
 montage:
   eeg:
     standard: standard_1020

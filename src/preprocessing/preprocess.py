@@ -18,18 +18,28 @@ from src.types import PreprocessedRecording, PrunedRecording
 def preprocess_recordings(recordings: list[PrunedRecording],
                           cfg: PreprocessingConfig) -> list[PreprocessedRecording]:
     """
-    Preprocess every run on its own, in the order given.
+    Preprocess every run on its own, in the order given. With cfg.eeg.drop_interpolated,
+    every EEG channel interpolated in any run is dropped from all runs, so they keep the
+    same channels.
     """
-    return [preprocess_recording(recording, cfg) for recording in recordings]
+    dropped_eeg = ()
+    if cfg.eeg.drop_interpolated:
+        dropped_eeg = _channels_interpolated_in_any_run(recordings)
+    return [preprocess_recording(recording, cfg, dropped_eeg) for recording in recordings]
 
 
-def preprocess_recording(recording: PrunedRecording,
-                         cfg: PreprocessingConfig) -> PreprocessedRecording:
+def _channels_interpolated_in_any_run(recordings: list[PrunedRecording]) -> tuple[str, ...]:
+    """The EEG channels pruning interpolated in at least one of the runs, sorted by name."""
+    return tuple(sorted({ch for recording in recordings for ch in recording.bad_channels.eeg}))
+
+
+def preprocess_recording(recording: PrunedRecording, cfg: PreprocessingConfig,
+                         dropped_eeg: tuple[str, ...] = ()) -> PreprocessedRecording:
     """
     Preprocess one run.
 
     1. EEG: broadband filter and ICA, then the feature (band power or band-passed),
-       without the interpolated channels if cfg.eeg.drop_interpolated.
+       without the channels in `dropped_eeg`.
     2. fNIRS: amplitude to band-passed HbO.
     3. Ground truth: the same transforms, placed on the fNIRS time axis; non-finite
        samples at the edges of that axis are dropped.
@@ -52,6 +62,8 @@ def preprocess_recording(recording: PrunedRecording,
     recording : PrunedRecording
         One run after pruning.
     cfg : PreprocessingConfig
+    dropped_eeg : tuple[str, ...]
+        EEG channels left out of the feature.
 
     Returns
     -------
@@ -70,9 +82,7 @@ def preprocess_recording(recording: PrunedRecording,
                          cfg.downsample_method)
     else:
         eeg = band_passed(eeg_clean, cfg.eeg.feature_band)
-    if cfg.eeg.drop_interpolated:
-        eeg = eeg.drop_sel(channel=[ch for ch in recording.bad_channels.eeg
-                                    if ch in eeg.channel.values])
+    eeg = eeg.drop_sel(channel=[ch for ch in dropped_eeg if ch in eeg.channel.values])
 
     # 2. fNIRS
     fnirs = fnirs_to_hbo(recording.fnirs, recording.geo3d, cfg.fnirs)

@@ -5,6 +5,7 @@ alignment, which runs the alignment check stops, and that the ground truth goes
 through the same transforms as the data.
 """
 import dataclasses
+import types
 
 import mne
 import numpy as np
@@ -19,8 +20,9 @@ from src.preprocessing.check import check_alignment
 from src.preprocessing.eeg import band_passed, band_power, clean_eeg
 from src.preprocessing.fnirs import band_pass, downsample
 from src.preprocessing.ground_truth import ground_truth_sources
+from src.preprocessing.preprocess import _channels_interpolated_in_any_run
 from src.preprocessing.split import split_into_blocks
-from src.types import GroundTruth, PreprocessedRecording
+from src.types import BadChannels, GroundTruth, PreprocessedRecording
 
 
 def make_series(values: np.ndarray, rate: float, start: float = 0.0) -> xr.DataArray:
@@ -387,3 +389,10 @@ def test_split_refuses_eeg_without_a_whole_number_of_samples_per_fnirs_sample():
     broken = dataclasses.replace(whole, eeg=whole.eeg.isel(time=slice(0, -1)))
     with pytest.raises(ValueError, match="whole number"):
         split_into_blocks([broken], groups=("block_1",))
+
+
+def test_channels_interpolated_in_any_run_are_those_of_all_runs_once():
+    runs = [types.SimpleNamespace(bad_channels=BadChannels(eeg=channels, fnirs=(), eeg_detail={},
+                                                           fnirs_detail={}))
+            for channels in [("T7", "Fz"), ("Fz", "C1"), ()]]
+    assert _channels_interpolated_in_any_run(runs) == ("C1", "Fz", "T7")

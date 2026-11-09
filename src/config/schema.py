@@ -72,7 +72,7 @@ class EegPruningPass2:
     runs after the data is re-referenced to the average of the channels pass 1 kept,
     because these criteria assume the shared reference signal has been removed (see
     EegPruningPass1 for the full sequence, and `detect_bad_eeg_channels` in
-    src/pruning/eeg.py). Defaults are pyprep's own.
+    src/pruning/eeg.py). Defaults are pyprep's own, except `correlation_frac_bad`.
 
     Attributes
     ----------
@@ -81,7 +81,8 @@ class EegPruningPass2:
     correlation_threshold : float
         Lowest acceptable best-neighbour correlation.
     correlation_frac_bad : float
-        Fraction of bad windows that condemns a channel.
+        Fraction of bad windows that condemns a channel. pyprep's 0.01 flags a channel
+        for a couple of bad 1 s windows in a whole recording.
     ransac_n_samples, ransac_sample_prop, ransac_corr_thresh, ransac_frac_bad,
     ransac_window_secs
         RANSAC parameters, passed to pyprep unchanged.
@@ -107,17 +108,24 @@ class EegPruningConfig:
         Line-noise frequencies notched before detection.
     ransac : bool
         If True, run the RANSAC criterion in pass 2.
+    motor_channels : tuple[str, ...]
+        The electrodes over the hand motor areas. Interpolating one replaces its signal
+        with a mix of its neighbours, so a subject with any of them bad in any recording
+        cannot be used. Each must be in the EEG montage.
     pass1 : EegPruningPass1
     pass2 : EegPruningPass2
     """
     line_freqs: tuple[float, ...] = (50, 100)
     ransac: bool = True
+    motor_channels: tuple[str, ...] = ("C3", "C4")
     pass1: EegPruningPass1 = field(default_factory=EegPruningPass1)
     pass2: EegPruningPass2 = field(default_factory=EegPruningPass2)
 
     def __post_init__(self):
         if not self.line_freqs:
             raise ValueError("line_freqs must list at least one frequency.")
+        if not self.motor_channels:
+            raise ValueError("motor_channels must list at least one electrode.")
 
 
 @dataclass(frozen=True)
@@ -174,22 +182,23 @@ class FnirsPruningConfig:
 @dataclass(frozen=True)
 class PruningConfig:
     """
-    Bad-channel detection for both modalities. Which recording it runs on is subject
-    information (SubjectConfig.paths).
+    Bad-channel detection for both modalities: the EEG on each recording on its own (for
+    synthetic data, on the background recording of each group), and the fNIRS on a window
+    of the rest period of each recording the reader selects for it
+    (`select_pruning_recordings`).
 
     Attributes
     ----------
     random_state : int
         Seed for pyprep's RANSAC.
     window_sec : float
-        fNIRS detection window: seconds of rest judged, from the rest onset. The
-        window never runs past the end of the rest period. The EEG is judged on the
-        whole rest recording.
+        Seconds of rest the fNIRS is judged on, from the rest onset. The window never
+        runs past the end of the rest period.
     eeg : EegPruningConfig
     fnirs : FnirsPruningConfig
     """
     random_state: int = 42
-    window_sec: float = 25.0
+    window_sec: float = 60.0
     eeg: EegPruningConfig = field(default_factory=EegPruningConfig)
     fnirs: FnirsPruningConfig = field(default_factory=FnirsPruningConfig)
 
@@ -221,9 +230,10 @@ class EegPreprocessingConfig:
         Band (Hz) of the EEG feature, e.g. alpha. The EEG ground truth is taken from
         the same band, so recovery is scored on the same signal.
     drop_interpolated : bool
-        Drop the channels pruning interpolated from the EEG feature. An interpolated
-        channel is a linear combination of its neighbours, so band-passed EEG with
-        them has a singular channel covariance, which mSPoC cannot use.
+        Drop every channel pruning interpolated in any of the subject's runs from the
+        EEG feature of all runs, so they keep the same channels. An interpolated channel
+        is a linear combination of its neighbours, so band-passed EEG with them has a
+        singular channel covariance, which mSPoC cannot use.
     """
     bandpass: tuple[float, float] = (1.0, 45.0)
     ica_n_components: int = 15

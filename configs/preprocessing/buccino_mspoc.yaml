@@ -14,7 +14,7 @@ eeg:
   ica_method: picard
   random_state: 42
   feature_band: [8.0, 12.0]  # alpha; the EEG ground truth uses the same band
-  drop_interpolated: true    # interpolated channels make the EEG covariance singular,
+  drop_interpolated: true    # channels interpolated in any run make the EEG covariance singular,
                              # which mSPoC cannot use
 
 # fNIRS: OD, motion correction (TDDR, wavelet), haemoglobin, band-pass, HbO.

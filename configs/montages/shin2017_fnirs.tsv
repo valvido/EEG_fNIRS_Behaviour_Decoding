@@ -1,0 +1,42 @@
+# Shin et al. (2017) fNIRS probe (doi:10.1109/TNSRE.2016.2628057): which optodes form
+# each channel, as 10-5 sites. Taken from the dataset's mnt.mat (the same for every
+# subject): 14 sources and 16 detectors, 30 mm apart, forming 9 frontal channels around
+# Fpz, 12 motor channels around each of C3 and C4, and 3 occipital channels around Oz.
+# A channel is named after its source and detector.
+channel	source	detector
+AF7Fp1	AF7	Fp1
+AF3Fp1	AF3	Fp1
+AF3AFz	AF3	AFz
+FpzFp1	Fpz	Fp1
+FpzAFz	Fpz	AFz
+FpzFp2	Fpz	Fp2
+AF4AFz	AF4	AFz
+AF4Fp2	AF4	Fp2
+AF8Fp2	AF8	Fp2
+OzPOz	Oz	POz
+OzO1	Oz	O1
+OzO2	Oz	O2
+C5CP5	C5	CP5
+C5FC5	C5	FC5
+C5C3	C5	C3
+FC3FC5	FC3	FC5
+FC3C3	FC3	C3
+FC3FC1	FC3	FC1
+CP3CP5	CP3	CP5
+CP3C3	CP3	C3
+CP3CP1	CP3	CP1
+C1C3	C1	C3
+C1FC1	C1	FC1
+C1CP1	C1	CP1
+C2FC2	C2	FC2
+C2CP2	C2	CP2
+C2C4	C2	C4
+FC4FC2	FC4	FC2
+FC4C4	FC4	C4
+FC4FC6	FC4	FC6
+CP4CP6	CP4	CP6
+CP4CP2	CP4	CP2
+CP4C4	CP4	C4
+C6CP6	C6	CP6
+C6C4	C6	C4
+C6FC6	C6	FC6

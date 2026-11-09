@@ -1,73 +1,104 @@
 """
-Prune a subject's recordings: detect bad channels once on the rest recording, then
-remove them from every run.
+Prune a subject's recordings: detect the bad channels, then remove them from every run.
 """
+import dataclasses
+
 from src.config import PruningConfig
 from src.positions import channel_optodes
-from src.pruning.eeg import detect_bad_eeg_channels
+from src.pruning.eeg import detect_bad_eeg_channels_by_recording
 from src.pruning.fnirs import detect_bad_fnirs_channels
 from src.pruning.segment import rest_window
 from src.types import BadChannels, PrunedRecording, RawRecording
 
-# The electrodes over the hand motor areas. Interpolating one replaces its signal with
-# a mix of its neighbours, so a subject with either one bad cannot be used.
-MOTOR_EEG_CHANNELS = ("C3", "C4")
-
 
 def prune_recordings(
-        recordings: list[RawRecording], rest: RawRecording,
+        recordings: list[RawRecording], references: list[RawRecording],
+        backgrounds: dict[str, RawRecording],
         cfg: PruningConfig) -> tuple[list[PrunedRecording], BadChannels]:
     """
-    Detect the bad channels on the rest recording and remove them from every run.
-    Bad EEG channels are interpolated, so every run keeps the same EEG montage; bad
-    fNIRS channels are dropped. Every run gets the same lists, so all runs have the
-    same channels afterwards.
+    Detect the bad channels and remove them from every run. Each recording has its own
+    bad EEG channels, which are interpolated, so every run keeps the same EEG montage.
+    The fNIRS channels bad in any of `references` are dropped from every run, so all
+    runs keep the same fNIRS channels.
 
     Parameters
     ----------
     recordings : list[RawRecording]
         The subject's runs.
-    rest : RawRecording
-        The recording channel quality is judged on (for synthetic data, the first
-        background recording of the session).
+    references : list[RawRecording]
+        The recordings fNIRS quality is judged on (`select_pruning_recordings`), each
+        with one stim event marking its rest period.
+    backgrounds : dict[str, RawRecording]
+        The background recording of each group (`load_backgrounds`). A run of such a
+        group gets the bad EEG channels of its background, any other those of its own
+        recording.
     cfg : PruningConfig
-        Detection window and thresholds.
+        fNIRS window, thresholds and the motor electrodes.
 
     Returns
     -------
     pruned : list[PrunedRecording]
-        One per run, in the order given.
+        One per run, in the order given, each with the EEG channels of its own recording
+        as `bad_channels.eeg`.
     bad_channels : BadChannels
-        The lists applied to every run, for the run's result.
+        All of the subject's, for the run's result.
 
     Raises
     ------
     ValueError
-        If a motor electrode (MOTOR_EEG_CHANNELS) is bad.
+        If a motor electrode (cfg.eeg.motor_channels) is not in the EEG of a recording,
+        or is bad in any recording.
     """
-    bad_channels = detect_bad_channels(rest, cfg)
-    bad_motor = [ch for ch in MOTOR_EEG_CHANNELS if ch in bad_channels.eeg]
+    judged = [backgrounds.get(recording.group, recording) for recording in recordings]
+    motor = cfg.eeg.motor_channels
+    absent = {recording.run: [ch for ch in motor if ch not in recording.eeg.ch_names]
+              for recording in judged if set(motor) - set(recording.eeg.ch_names)}
+    if absent:
+        raise ValueError(f"Motor electrodes are not in the EEG of recordings {absent}. Set "
+                         f"eeg.motor_channels in the pruning YAML to electrodes of this "
+                         f"montage.")
+    bad_channels = detect_bad_channels(references, judged, cfg)
+    bad_motor = {name: [ch for ch in motor if ch in channels]
+                 for name, channels in bad_channels.eeg_by_recording.items()
+                 if set(motor) & set(channels)}
     if bad_motor:
-        raise ValueError(f"Motor electrode(s) {bad_motor} are bad on rest recording "
-                         f"'{rest.run}'. Interpolation would replace their signal, so "
-                         "this subject cannot be used.")
-    pruned = [remove_bad_channels(recording, bad_channels) for recording in recordings]
+        raise ValueError(f"Motor electrodes are bad in recordings {bad_motor}. Interpolation "
+                         "would replace their signal, so this subject cannot be used.")
+    pruned = [remove_bad_channels(recording, dataclasses.replace(
+                  bad_channels, eeg=bad_channels.eeg_by_recording[judged_recording.run]))
+              for recording, judged_recording in zip(recordings, judged)]
     return pruned, bad_channels
 
 
-def detect_bad_channels(rest: RawRecording, cfg: PruningConfig) -> BadChannels:
+def detect_bad_channels(references: list[RawRecording], eeg_recordings: list[RawRecording],
+                        cfg: PruningConfig) -> BadChannels:
     """
-    Detect bad EEG and fNIRS channels on the rest recording. The EEG is judged on the
-    whole rest recording. The fNIRS is judged on the pruning window only, and is cut
-    to it only after it has been cleaned, since filtering just the window would add
-    edge artefacts.
+    Detect bad EEG channels on each of `eeg_recordings` on its own, judged whole, and bad
+    fNIRS channels on the window of the rest period of each of `references`. A fNIRS
+    channel bad in any reference is bad. The fNIRS is cut only after it has been cleaned,
+    since filtering just the window would add edge artefacts. A recording listed more
+    than once is judged once.
     """
-    bad_eeg, eeg_detail = detect_bad_eeg_channels(rest.eeg, cfg.eeg, cfg.random_state)
-    start, end = rest_window(rest, cfg.window_sec)
-    bad_fnirs, fnirs_detail = detect_bad_fnirs_channels(
-        rest.fnirs, rest.geo3d, (start, end), cfg.fnirs)
+    eeg_by_recording, eeg_detail = detect_bad_eeg_channels_by_recording(
+        {recording.run: recording.eeg for recording in eeg_recordings},
+        cfg.eeg, cfg.random_state)
+    bad_eeg = tuple(sorted({ch for channels in eeg_by_recording.values() for ch in channels}))
+
+    fnirs_by_recording, fnirs_detail = {}, {}
+    for reference in references:
+        bad, detail = detect_bad_fnirs_channels(
+            reference.fnirs, reference.geo3d, rest_window(reference, cfg.window_sec),
+            cfg.fnirs)
+        fnirs_by_recording[reference.run] = bad
+        for criterion, channels in detail.items():
+            fnirs_detail[criterion] = tuple(sorted({*fnirs_detail.get(criterion, ()),
+                                                    *channels}))
+    bad_fnirs = tuple(sorted({ch for channels in fnirs_by_recording.values()
+                              for ch in channels}))
     return BadChannels(eeg=bad_eeg, fnirs=bad_fnirs,
-                       eeg_detail=eeg_detail, fnirs_detail=fnirs_detail)
+                       eeg_detail=eeg_detail, fnirs_detail=fnirs_detail,
+                       eeg_by_recording=eeg_by_recording,
+                       fnirs_by_recording=fnirs_by_recording)
 
 
 def remove_bad_channels(recording: RawRecording,

@@ -114,8 +114,8 @@ def plot_patterns(selection: Selection, geometry: Geometry, val_group: str | Non
 
 def plot_bad_channels(result: RunResult):
     """
-    The channels pruning removed: bad EEG electrodes (interpolated) marked on the
-    montage, and dropped fNIRS channels on the probe.
+    The channels pruning removed: EEG electrodes bad in any recording (interpolated
+    there) marked on the montage, and dropped fNIRS channels on the probe.
 
     Returns
     -------
@@ -131,7 +131,7 @@ def plot_bad_channels(result: RunResult):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         mne.viz.plot_sensors(info, kind="topomap", show_names=True, axes=ax_eeg, show=False)
-    ax_eeg.set_title(f"EEG: {len(bad.eeg)} bad, interpolated (red)\n{', '.join(bad.eeg) or 'none'}",
+    ax_eeg.set_title(f"EEG: {len(bad.eeg)} bad in any recording, interpolated there (red)\n{', '.join(bad.eeg) or 'none'}",
                      fontsize=9)
 
     fnirs = list(geometry.fnirs_channels) + [c for c in bad.fnirs if c not in geometry.fnirs_channels]
@@ -141,7 +141,7 @@ def plot_bad_channels(result: RunResult):
                cmap=ListedColormap(["#c3c2b7", "#e34948"]), add_colorbar=False, zorder="ascending")
     ax_fnirs.set_title(f"fNIRS: {len(bad.fnirs)} of {len(fnirs)} channels dropped (red)",
                        fontsize=9)
-    fig.suptitle("Pruning, found on the rest recording", fontsize=10)
+    fig.suptitle("Pruning", fontsize=10)
     fig.tight_layout()
     return fig
 

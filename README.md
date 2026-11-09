@@ -13,9 +13,9 @@ It runs on two kinds of data:
 
 - **Synthetic data**, where the true sources and mixing matrices are known, so the
   recovered components can be scored against the ground truth.
-- **Real data** from the hybrid EEG-fNIRS dataset of Buccino et al. (2016), where
-  there is no ground truth and the pairs are assigned from the motor channels or
-  the task timing instead.
+- **Real data** from the hybrid EEG-fNIRS datasets of Buccino et al. (2016) and
+  Shin et al. (2017, dataset A), where there is no ground truth and the pairs are
+  assigned from the motor channels or the task timing instead.
 
 This code was written for the master's thesis *From Unsupervised fNIRS–EEG Fusion to
 Supervised Neural Decoding: Investigating Source Decomposition Methods and
@@ -25,7 +25,7 @@ Classification Strategies on Synthetic and Real Data* at the
 
 The pipeline is modular: every step is its own package with a small public API, and
 the datasets, methods, pair assignments and selection metrics are registries you can
-add to. The two datasets above are the ones it ships with, not a fixed format; see
+add to. The datasets above are the ones it ships with, not a fixed format; see
 [Adapting the pipeline](#adapting-the-pipeline) to run it on your own data.
 
 ## How it works
@@ -40,7 +40,7 @@ flowchart TD
     yaml[/"experiment YAML + subject YAML"/] --> config["<b>config</b><br/>one section per step"]
     config --> run{{"<b>experiment.run</b><br/>calls every step in order"}}
     run --> loading["<b>loading</b><br/>one reader per dataset"]
-    loading -- RawRecording --> pruning["<b>pruning</b><br/>bad channels on a rest recording"]
+    loading -- RawRecording --> pruning["<b>pruning</b><br/>bad channels on data without trials"]
     pruning -- PrunedRecording --> preprocessing["<b>preprocessing</b><br/>cleaning, features, alignment"]
     preprocessing -- PreprocessedRecording --> unmixing
     subgraph unmixing ["unmixing"]
@@ -63,8 +63,10 @@ Each box is a package in `src/`; the labels on the arrows are the dataclasses
 1. **Loading** (`src/loading`) reads the subject's EEG and fNIRS recordings and
    applies the montage from the subject config, so the electrode and optode
    positions travel with the data from then on.
-2. **Pruning** (`src/pruning`) finds bad EEG and fNIRS channels on a rest recording.
-   Bad EEG channels are interpolated, bad fNIRS channels dropped, in every run.
+2. **Pruning** (`src/pruning`) finds bad EEG and fNIRS channels on data without
+   trials: the EEG of each recording on its own, the fNIRS on a rest period the
+   dataset's reader selects. Bad EEG channels are interpolated in the runs of the
+   recording they are bad in; a fNIRS channel bad anywhere is dropped from every run.
 3. **Preprocessing** (`src/preprocessing`) cleans the EEG (including ICA) and turns
    it into band power or a band-passed signal, band-passes the HbO, cuts both to the
    stimulus window on one time axis and z-scores them. Synthetic ground truth goes
@@ -115,7 +117,7 @@ config can name it.
 
 | To | Add or change | Where |
 |---|---|---|
-| Run on your own dataset | A reader module with `REQUIRED_PATHS`, `check`, `read_recordings` and `read_rest`, returning `RawRecording` objects. Register it in `READERS` and set `format:` in your subject configs to its name. | `src/loading/load.py` |
+| Run on your own dataset | A reader module with `REQUIRED_PATHS`, `check`, `read_recordings`, `read_background` and `select_pruning_recordings`, returning `RawRecording` objects. Register it in `READERS` and set `format:` in your subject configs to its name. | `src/loading/load.py` |
 | Add a decomposition method | An entry in `METHODS`: the model class, its hyperparameters, the EEG feature it needs and whether it is temporal or structured. Any class with the `fit` / `transform` interface of the cedalion models works. Give it a grid in `configs/unmixing/grids.yaml`. | `src/unmixing/models.py` |
 | Assign pairs to the classes differently | A function with the signature of `ground_truth`, registered in `STRATEGIES`. | `src/unmixing/assignment.py` |
 | Select hyperparameters by another criterion | A `Metric` in `METRICS`. | `src/unmixing/metrics.py` |
@@ -182,13 +184,15 @@ data/synthetic/<dataset>/[<subject_id>/]<subject_id>_<group>/run_<nnn>_seed_<see
     *_A_fnirs_*.nc             ground truth: fNIRS mixing matrix
 ```
 
-Channels are pruned on the background recording the simulation was built on. These
-are real recordings from an experiment of the IBS Lab and are not public either. The
-reader expects them in this layout:
+Channels are pruned on the background recordings the simulation was built on, one
+per group: the EEG of each group on its own background, the fNIRS on the first minute
+of the earliest one. These are real recordings from an experiment of the IBS Lab and
+are not public either. The reader expects them in the folder `paths.background` of the
+subject config, named after the group:
 
 ```
-data/background_recordings/<subject_id>/<subject_id>_<recording>-raw.fif
-data/background_recordings/<subject_id>/<subject_id>_<recording>.snirf
+data/background_recordings/<subject_id>/<subject_id>_<group>-raw.fif
+data/background_recordings/<subject_id>/<subject_id>_<group>.snirf
 ```
 
 `configs/subjects/synthetic/sub01/sub01_snr_fnirs-5_eeg5.yaml` is an example subject
@@ -207,6 +211,26 @@ data/real_buccino/EEG-fNIRS hybrid SMR BCI data S1-S8/S1.mat
 
 The dataset has no optode positions; `configs/montages/buccino_fnirs.tsv` gives the
 optode sites of each channel, reconstructed from Fig. 1 of the paper.
+
+### Real data (Shin et al., 2017, dataset A)
+
+The open access EEG+NIRS dataset: 29 subjects, left versus right hand motor imagery in
+sessions 1, 3 and 5. Each subject has an EEG and a NIRS folder of BBCI toolbox files
+(`cnt.mat`, `mrk.mat`, and `mnt.mat` for the NIRS). Download the MATLAB version and
+place the folders where `configs/subjects/shin2017/<subject>/<subject>.yaml` points,
+for example:
+
+```
+data/real_shin_luhmann/EEG_01-05/subject 01/with occular artifact/
+data/real_shin_luhmann/NIRS_01-29/subject 01/
+```
+
+Each motor imagery session is split into two blocks of 10 trials, which are the
+cross-validation groups (`session<k>_block<b>`). `configs/montages/shin2017_fnirs.tsv`
+gives the optode sites of each channel, from the dataset's `mnt.mat`, and
+`configs/pruning/shin2017.yaml` the pruning settings: a 50 Hz notch only, since the EEG
+is at 200 Hz, and FCC3h, CCP3h, FCC4h, CCP4h as motor electrodes, since the montage has
+no C3 or C4.
 
 ## Usage
 
@@ -259,7 +283,7 @@ pipeline does not read yet, add a loader for it first, as notebook 06 shows.
 | Notebook | What it covers |
 |---|---|
 | [01 Configs and loading](notebooks/01_configs_and_loading.ipynb) | The subject and experiment configs, the recordings, sensor positions, trials and ground truth |
-| [02 Pruning](notebooks/02_pruning.ipynb) | Finding bad EEG and fNIRS channels on the rest recording, and why each one was flagged |
+| [02 Pruning](notebooks/02_pruning.ipynb) | Finding bad EEG and fNIRS channels on data without trials, and why each one was flagged |
 | [03 Preprocessing](notebooks/03_preprocessing.ipynb) | From raw EEG and fNIRS to the band power and HbO the models are fit on |
 | [04 Unmixing](notebooks/04_unmixing.ipynb) | Fitting a CCA model, assigning its pairs to the hands, choosing hyperparameters, a full run |
 | [05 Results and classification](notebooks/05_results_and_classification.ipynb) | Reading a saved run back, its scores, figures and classification |

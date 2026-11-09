@@ -14,7 +14,7 @@ import mne
 import numpy as np
 
 from src.config import SubjectConfig
-from src.loading import buccino, synthetic
+from src.loading import buccino, shin2017, synthetic
 from src.loading.montage import apply_montage, check_montage
 from src.types import RawRecording
 
@@ -37,12 +37,21 @@ class Reader(Protocol):
     def read_recordings(self, subject: SubjectConfig) -> list[RawRecording]:
         """Every run of the subject's groups, unprocessed."""
 
-    def read_rest(self, subject: SubjectConfig) -> RawRecording:
-        """The recording pruning judges channel quality on, with exactly one stim
-        event marking its rest period."""
+    def read_background(self, subject: SubjectConfig) -> list[RawRecording]:
+        """The background recording of each of the subject's groups, unprocessed, if the
+        dataset has data without its signals of interest (the simulator's); otherwise
+        none."""
+
+    def select_pruning_recordings(self, recordings: list[RawRecording],
+                                  backgrounds: dict[str, RawRecording]) -> list[RawRecording]:
+        """The recordings the fNIRS is judged on, chosen from the runs or the
+        backgrounds, each with exactly one stim event marking its rest period (edges
+        left out, `mark_rest_period`). The first is the earliest; image space takes
+        the measurement variance from it."""
 
 
-READERS: dict[str, Reader] = {"synthetic": synthetic, "buccino": buccino}
+READERS: dict[str, Reader] = {"synthetic": synthetic, "buccino": buccino,
+                              "shin2017": shin2017}
 
 
 def check_data_format(subject: SubjectConfig):
@@ -52,7 +61,8 @@ def check_data_format(subject: SubjectConfig):
     - its format has a reader
     - the paths that reader needs are set and exist
     - the reader's own layout checks pass (synthetic: every group has a folder with
-      run_* folders in it; buccino: every group names a block)
+      run_* folders in it; buccino: every group names a block; shin2017: every group
+      names a block of a motor imagery session and the BBCI files are there)
     - the montage can be applied: fNIRS positions set, montage files on disk
     """
     if subject.format not in READERS:
@@ -82,14 +92,38 @@ def load_recordings(subject: SubjectConfig) -> list[RawRecording]:
     return recordings
 
 
-def load_rest(subject: SubjectConfig) -> RawRecording:
+def select_pruning_recordings(subject: SubjectConfig, recordings: list[RawRecording],
+                              backgrounds: dict[str, RawRecording]) -> list[RawRecording]:
     """
-    The rest recording that pruning judges channel quality on, unprocessed, with the
-    subject's montage applied.
+    The recordings pruning judges fNIRS quality on, each with one stim event marking its
+    rest period, the earliest first:
+    - synthetic: the background recording of the group recorded earliest, its first
+      minute
+    - shin2017: every session, the minute of rest it starts with
+    - buccino: the whole session, which has no rest period long enough
+
+    Parameters
+    ----------
+    subject : SubjectConfig
+    recordings : list[RawRecording]
+        From `load_recordings`.
+    backgrounds : dict[str, RawRecording]
+        From `load_backgrounds`.
     """
-    [rest] = apply_montage([READERS[subject.format].read_rest(subject)], subject.montage)
-    _check_eeg_finite(subject, [rest])
-    return rest
+    return READERS[subject.format].select_pruning_recordings(recordings, backgrounds)
+
+
+def load_backgrounds(subject: SubjectConfig) -> dict[str, RawRecording]:
+    """
+    The background recording of each of the subject's groups, by group, with its montage
+    applied. Empty if the dataset has none.
+    """
+    backgrounds = READERS[subject.format].read_background(subject)
+    if not backgrounds:
+        return {}
+    backgrounds = apply_montage(backgrounds, subject.montage)
+    _check_eeg_finite(subject, backgrounds)
+    return {background.group: background for background in backgrounds}
 
 
 def _check_eeg_finite(subject: SubjectConfig, recordings: list[RawRecording]):
